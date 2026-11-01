@@ -1,0 +1,44 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    name: lint, types, unit tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          version: "0.11.32"        # same uv that wrote uv.lock
+          enable-cache: true
+
+      - name: Install Python 3.10 + locked deps (CPU torch)
+        run: |
+          uv python install 3.10
+          uv sync --group dev --frozen
+
+      - name: Lint
+        run: |
+          uv run ruff check src tests tools scripts
+          uv run ruff format --check src tests tools scripts
+
+      - name: Type check
+        run: uv run mypy
+
+      - name: Unit tests
+        # parity/golden tests need the legacy repos + weights; they run locally
+        # (make parity / make golden) and in the Day 24 eval-gate workflow.
+        run: uv run pytest tests/unit --cov --cov-report=term-missing:skip-covered

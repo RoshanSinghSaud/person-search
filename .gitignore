@@ -1,0 +1,35 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+dist/
+build/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# Secrets / local config
+.env
+
+# Weights, data and outputs never go in git (weights -> MLflow registry, data -> HF dataset)
+models/*
+!models/README.md
+outputs/
+*.pt
+*.pth
+*.pth.tar*
+*.onnx
+*.npz
+*.mp4
+*.avi
+*.mov
+*.mkv
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
