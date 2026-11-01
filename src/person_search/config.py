@@ -9,9 +9,8 @@ Precedence (highest first):
 4. a YAML profile (``configs/*.yaml``) given by ``config_file`` or ``PS_CONFIG_FILE``
 5. the defaults below
 
-The defaults are repo 2's committed values (``pole/reid_main.py``), which
-reproduce the report's run: on the 4 test cases the selected frames equal the
-boxes drawn in the committed ``output_annotated.mp4`` files. See AUDIT.md (F4)
+The defaults are repo 2's committed values (``pole/reid_main.py``), the final
+code of the published system; the golden test pins them. See AUDIT.md (F4, F5)
 and ``docs/decisions/0002-config-profile.md``.
 """
 
@@ -46,7 +45,7 @@ class TrackerSettings(BaseModel):
     n_init: int = Field(3, gt=0)
     max_iou_distance: float = 0.7
     # deep-sort-realtime's default. The report and paper say 0.3 but the committed
-    # code never set it; 0.2 is what reproduces the report's run.
+    # code never set it; 0.2 is what the committed code ran with.
     max_cosine_distance: float = 0.2
     nn_budget: int | None = None
     embedder: Literal["mobilenet", "torchreid", "clip_RN50", "clip_ViT-B/16"] = "mobilenet"

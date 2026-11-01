@@ -63,19 +63,21 @@ def main() -> int:
             "golden": set(golden.selected_samples) if golden else None,
         }
 
-    grid = itertools.product([0.5, 0.6, 0.65, 0.7], [0.05, 0.1], [0.9, 0.95, 1.0])
+    grid = itertools.product([0.5, 0.6, 0.65, 0.68, 0.7], [0.05, 0.1], [0.9, 0.95, 1.0])
     rows = []
     for base, margin, ratio in grid:
         cfg = ScoringSettings(
             base_threshold=base, relative_margin=margin, frame_threshold_ratio=ratio
         )
-        per_case, eq_golden, eq_drawn, jac_drawn = {}, 0, 0, []
+        per_case, eq_golden, eq_drawn, jac_drawn, eq_names = {}, 0, 0, [], []
         for name, c in cases.items():
             sel = set(photo_search(c["obs"], c["query"], cfg).selected_samples)
             per_case[name] = metrics_for_selection(sel, c["labels"])
             eq_golden += c["golden"] is not None and sel == c["golden"]
             if c["drawn"] is not None:
                 eq_drawn += sel == c["drawn"]
+                if sel == c["drawn"]:
+                    eq_names.append(name.removeprefix("test_case_"))
                 union = sel | c["drawn"]
                 jac_drawn.append(len(sel & c["drawn"]) / len(union) if union else 1.0)
         s = system_metrics(per_case)
@@ -89,6 +91,7 @@ def main() -> int:
                 "recall": round(s.recall, 4),
                 "cases_equal_golden": eq_golden,
                 "cases_equal_drawn": eq_drawn,
+                "equal_drawn": ",".join(eq_names),
                 "mean_jaccard_drawn": round(sum(jac_drawn) / len(jac_drawn), 4)
                 if jac_drawn
                 else None,
@@ -103,7 +106,7 @@ def main() -> int:
         print(
             f"{r['base']:>5} {r['margin']:>6} {r['frame_ratio']:>5} {r['f1']:7.2%} "
             f"{r['precision']:7.2%} {r['recall']:7.2%}  {r['cases_equal_golden']:>7}  "
-            f"{r['cases_equal_drawn']:>6}  {r['mean_jaccard_drawn']}"
+            f"{r['cases_equal_drawn']:>6}  {r['mean_jaccard_drawn']}  {r['equal_drawn']}"
         )
     if args.json_out:
         args.json_out.write_text(json.dumps(rows, indent=2))

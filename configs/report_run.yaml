@@ -1,7 +1,8 @@
-# Repo 2 (pole/reid_main.py) as committed. On the 4 test cases this reproduces
-# the report's run: the selected frames equal the boxes drawn in the committed
-# output_annotated.mp4 files (see AUDIT.md F4, tools/legacy/reproduce_repo2.py).
-# These are also the code defaults in person_search/config.py.
+# Repo 2 (pole/reid_main.py) as committed: the final code of the published
+# system. The golden test pins this configuration (exact legacy parity on all
+# 4 test cases); it finds the target in 4/4 cases at 84.70% frame F1.
+# No single setting reproduces all 4 committed output videos (AUDIT.md F5,
+# section 5; decision 0002). These are also the code defaults in config.py.
 detector:
   weights: models/yolo11n_person.pt
   confidence: 0.4
