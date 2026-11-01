@@ -1,0 +1,30 @@
+# Repo 2 (pole/reid_main.py) as committed. On the 4 test cases this reproduces
+# the report's run: the selected frames equal the boxes drawn in the committed
+# output_annotated.mp4 files (see AUDIT.md F4, tools/legacy/reproduce_repo2.py).
+# These are also the code defaults in person_search/config.py.
+detector:
+  weights: models/yolo11n_person.pt
+  confidence: 0.4
+  resize_width: 640
+tracker:
+  max_age: 30
+  n_init: 3
+  max_iou_distance: 0.7
+  max_cosine_distance: 0.2      # deep-sort-realtime default; never set in code
+  embedder: mobilenet
+  min_box_size: 10
+  include_unmatched_tracks: true
+sampling:
+  target_fps: 12
+  embed_every: 3
+osnet:
+  weights: models/osnet_campus_v1.pth.tar
+  version: osnet-v1
+irra:
+  weights: models/irra_v1.pth
+  version: irra-v1
+scoring:
+  top_fraction: 0.5
+  base_threshold: 0.65
+  relative_margin: 0.1
+  frame_threshold_ratio: 0.9
