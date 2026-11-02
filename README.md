@@ -88,9 +88,9 @@ Every setting can be overridden with `PS_<SECTION>__<FIELD>`, e.g.
 - **`ModuleNotFoundError: No module named 'person_search'` on macOS.** The
   `.pth` files in `.venv` got macOS's `hidden` flag, and Python skips hidden
   `.pth` files. Check with `ls -lO .venv/lib/python3.10/site-packages | grep pth`;
-  fix with `make fix-pth` (`make setup` runs it). Re-run it after any
-  `uv sync` that reinstalls packages. Tests import from `src/` directly and are
-  not affected.
+  fix with `make fix-pth` (`make setup` runs it). The flag can come back, so
+  every `make` target imports from `src/` directly and is not affected; only
+  `uv run person-search ...` typed by hand needs `make fix-pth` again.
 - **`make golden` fails on a Mac with missing/extra frames.** Expected before a
   Mac baseline exists: the shipped golden data are for linux-x86_64. Run
   `make golden-baseline` once, then `make golden`.

@@ -6,6 +6,11 @@ LEGACY_DIR ?= ../legacy
 CASES_DIR  ?= $(LEGACY_DIR)/amrit-pbvs
 # e.g. linux-x86_64, darwin-arm64 (same tag as the tests compute from Python)
 PLATFORM   := $(shell uname -s | tr '[:upper:]' '[:lower:]')-$(shell uname -m)
+
+# Every target imports the package straight from src/, so nothing here depends
+# on the editable-install .pth file (macOS can flag it hidden; Python then skips
+# it). Outside make, `make fix-pth` repairs the .pth for `uv run person-search`.
+export PYTHONPATH := $(CURDIR)/src$(if $(PYTHONPATH),:$(PYTHONPATH))
 PY         ?= uv run python
 PYTEST     ?= uv run pytest
 
