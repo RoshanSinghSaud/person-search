@@ -13,6 +13,11 @@ different floats on different CPUs and builds, and the pipeline's hard
 decisions (DeepSORT gating, tau_base, the 0.9 * tau frame floor) turn small
 differences into different selections (AUDIT.md F18).
 
+`make fingerprint` locates the first difference at video decoding (the OpenCV
+wheels decode the same H.264 file to different pixels on the two platforms).
+After `make golden-baseline` on the Mac, `make golden` passes 4/4 there: the
+extraction is faithful on both platforms; only the inputs differ.
+
 ## Decision
 
 - Golden data are stored per platform: `tests/golden/data/<sys.platform>-<machine>/`.
@@ -29,7 +34,11 @@ differences into different selections (AUDIT.md F18).
 ## Consequences
 
 - A Mac is fine for development; numbers that go in the README, the CV or a
-  decision note come from linux-x86_64 (CI or Docker).
+  decision note come from linux-x86_64 (CI or Docker). On the Mac, repo 2's
+  code scores 85.34% frame F1 versus 84.70% on Linux, so the platform alone
+  moves the headline number by more than half a point.
+- Decoding is part of the model: if ingest ever runs on more than one platform
+  (or OpenCV/FFmpeg is upgraded), the index must be rebuilt and re-evaluated.
 - The sensitivity is itself a result: a +51-frame swing from float-level noise
   in case 4 shows how close its tracks sit to tau_base. Worth one line in the
   interview story and a robustness check later (e.g. scores within +-0.01 of a
