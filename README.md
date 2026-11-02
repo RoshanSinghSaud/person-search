@@ -83,6 +83,19 @@ person-search config                                                # resolved s
 Every setting can be overridden with `PS_<SECTION>__<FIELD>`, e.g.
 `PS_SCORING__BASE_THRESHOLD=0.7`. See `.env.example`.
 
+### Troubleshooting
+
+- **`ModuleNotFoundError: No module named 'person_search'` on macOS.** The
+  `.pth` files in `.venv` got macOS's `hidden` flag, and Python skips hidden
+  `.pth` files. Check with `ls -lO .venv/lib/python3.10/site-packages | grep pth`;
+  fix with `make fix-pth` (`make setup` runs it). Re-run it after any
+  `uv sync` that reinstalls packages. Tests import from `src/` directly and are
+  not affected.
+- **`(base)` in the prompt.** Run `conda deactivate`; uv manages its own Python 3.10.
+- **Google Drive refuses the download** in `make weights`. Download the folder
+  linked in repo 2's README by hand and place the files in `models/` under the
+  names in `models/README.md`.
+
 ## Results so far
 
 ### Parity with the legacy code (`make parity`)

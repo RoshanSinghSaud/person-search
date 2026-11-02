@@ -14,7 +14,15 @@ help: ## list targets
 .PHONY: setup
 setup: ## create the env (CPU torch) with dev tools, install pre-commit hooks
 	uv sync --group dev
-	uv run pre-commit install
+	@$(MAKE) --no-print-directory fix-pth
+	uv run --no-sync python -c "import person_search; print('person_search importable from', person_search.__file__)"
+	uv run --no-sync pre-commit install
+
+.PHONY: fix-pth
+fix-pth: ## macOS: un-hide .pth files in .venv (Python skips hidden .pth files)
+	@if [ "$$(uname)" = "Darwin" ]; then \
+		chflags nohidden .venv/lib/python*/site-packages/*.pth && echo "cleared hidden flag on .venv .pth files"; \
+	fi
 
 .PHONY: legacy
 legacy: ## clone both legacy repos into $(LEGACY_DIR) (read-only reference)
