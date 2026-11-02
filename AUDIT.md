@@ -66,6 +66,7 @@ gated). SHA-256s are in `models/README.md` via `scripts/fetch_weights.py`.
 | F14 | `clip.load` on CUDA keeps fp16 weights; on CPU it casts to fp32. Repo 1's IRRA numbers therefore depend on the device. | Comparability of IRRA scores | `irra.precision` is explicit (fp32 default) |
 | F15 | IRRA inserts 8 prompt tokens and drops the last 8 token slots; descriptions longer than ~67 BPE tokens lose EOT and are read at slot 76. | Long witness descriptions | Same behaviour, now logged |
 | F16 | The IRRA checkpoint contains every CLIP tensor except `logit_scale`, so the base OpenAI download contributes nothing. | 335 MB download, start-up time | Model built from the checkpoint (decision 0003) |
+| F18 | **The pipeline's output is platform-dependent.** The same code, weights and pinned versions select different frames on macOS arm64 than on Linux x86_64: on an M-series MacBook, case 1 lost 3 frames, case 2 lost 12, case 3 lost 86 and gained 3, case 4 gained 51 (a second track crossed tau_base). Decoding, YOLO and OSNet differ at the floating-point level between platforms, and the hard thresholds (DeepSORT gating, tau_base, the 0.9 * tau frame floor) turn those differences into different selections. | Golden data are per platform; frame F1 is only comparable on one reference platform | `tests/golden/data/<platform>/`, `make golden-baseline`, `make fingerprint`; reference = linux-x86_64 (CI, Docker image). Decision 0005 |
 | F17 | Repo 2 has no license file; repo 1 is MIT; YOLO is AGPL-3.0, DeepSORT GPL-3.0. | Publishing | `THIRD_PARTY_NOTICES.md`; get the team's OK |
 
 ### First speed numbers (this audit's container: 2 vCPU, no GPU, shared with other jobs - indicative only)
@@ -157,4 +158,4 @@ by the harness to `../legacy/runs/repo2_default/`; golden files are in
 |---|---|---|
 | `tests/parity/test_osnet_parity.py` | 20 crops (4 query photos + 16 boxes from the test videos), campus and Market-1501 weights | **pass** - min cosine 0.99999994 (campus) / 1.00000000 (Market-1501); max abs diff 4.8e-7; identical rankings |
 | `tests/parity/test_irra_parity.py` | same 20 crops + 5 descriptions (one long enough to hit F15) | **pass** - image min cosine 0.99999988, text 1.00000000; max abs diff 6.6e-7; text-to-image similarities within 2.1e-7; identical top-10 |
-| `tests/golden/test_golden.py` | 4 test cases, `pipeline.run(video, photo)` vs repo 2 untouched | **pass on all 4** (`pytest -m golden`) - identical selected frames and track IDs; missing 0, extra 0 |
+| `tests/golden/test_golden.py` | 4 test cases, `pipeline.run(video, photo)` vs repo 2 untouched, same platform (F18) | **pass on all 4** (`pytest -m golden`) - identical selected frames and track IDs; missing 0, extra 0 |

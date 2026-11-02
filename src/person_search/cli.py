@@ -15,6 +15,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import platform
 import sys
 from pathlib import Path
 
@@ -185,7 +186,12 @@ def build_parser() -> argparse.ArgumentParser:
 
     sg = sub.add_parser("golden", help="compare pipeline output with golden frames")
     sg.add_argument("--cases-dir", type=Path, required=True)
-    sg.add_argument("--golden-dir", type=Path, default=Path("tests/golden/data"))
+    sg.add_argument(
+        "--golden-dir",
+        type=Path,
+        default=Path("tests/golden/data") / f"{sys.platform}-{platform.machine().lower()}",
+        help="golden data for this platform (default: tests/golden/data/<platform>)",
+    )
     sg.set_defaults(func=_cmd_golden)
     return p
 

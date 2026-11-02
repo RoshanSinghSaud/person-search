@@ -91,6 +91,9 @@ Every setting can be overridden with `PS_<SECTION>__<FIELD>`, e.g.
   fix with `make fix-pth` (`make setup` runs it). Re-run it after any
   `uv sync` that reinstalls packages. Tests import from `src/` directly and are
   not affected.
+- **`make golden` fails on a Mac with missing/extra frames.** Expected before a
+  Mac baseline exists: the shipped golden data are for linux-x86_64. Run
+  `make golden-baseline` once, then `make golden`.
 - **`(base)` in the prompt.** Run `conda deactivate`; uv manages its own Python 3.10.
 - **Google Drive refuses the download** in `make weights`. Download the folder
   linked in repo 2's README by hand and place the files in `models/` under the
@@ -110,7 +113,17 @@ Every setting can be overridden with `PS_<SECTION>__<FIELD>`, e.g.
 
 `pipeline.run(video, photo)`, rebuilt from the new modules, selects **exactly the
 same frames on the same track IDs** as repo 2's untouched `run_reid` on all 4
-test cases (missing 0, extra 0).
+test cases (missing 0, extra 0), on Linux x86_64.
+
+Golden data are per platform, because decoding and float arithmetic differ
+slightly between machines and the paper's hard thresholds amplify that
+(AUDIT.md F18). On a new machine type, record its baseline once:
+
+```bash
+make fingerprint        # where does this machine first differ from linux-x86_64?
+make golden-baseline    # run repo 2 untouched here, save tests/golden/data/<platform>/
+make golden             # pipeline.run must match it exactly
+```
 
 ### Day 2 numbers (photo query, frame-level, labels' TP + FN as ground truth)
 

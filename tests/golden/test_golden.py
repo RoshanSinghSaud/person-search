@@ -1,7 +1,9 @@
 """Golden test: ``pipeline.run(video, photo)`` selects exactly the frames that
-repo 2's untouched ``run_reid`` selected on each test case.
+repo 2's untouched ``run_reid`` selects on each test case, on the same platform.
 
-Run with ``make golden`` (about 2-4 minutes per case on a laptop CPU).
+Golden data live in ``tests/golden/data/<platform>/`` (e.g. ``linux-x86_64``,
+``darwin-arm64``). Record them once per machine type with
+``make golden-baseline``, then run ``make golden``.
 """
 
 from __future__ import annotations
@@ -13,7 +15,7 @@ from person_search.eval.golden import GoldenCase, compare
 from person_search.factory import build_components
 from person_search.pipeline import run
 from person_search.types import OSNET
-from tests.conftest import CASES, GOLDEN_DIR, REPO_ROOT, WEIGHTS, require
+from tests.conftest import CASES, GOLDEN_DIR, PLATFORM, REPO_ROOT, WEIGHTS, require
 
 pytestmark = [pytest.mark.golden, pytest.mark.slow]
 
@@ -32,7 +34,8 @@ def components():
 @pytest.mark.parametrize("case", CASES)
 def test_selected_frames_match_legacy(case, cases_dir, components):
     golden_file = GOLDEN_DIR / f"{case}.json"
-    require(golden_file)
+    if not golden_file.exists():
+        pytest.skip(f"no golden data for {PLATFORM}: run `make golden-baseline` on this machine")
     golden = GoldenCase.load(golden_file)
     out = run(
         cases_dir / case / "test_video.mp4", cases_dir / case / "query.jpg", components=components

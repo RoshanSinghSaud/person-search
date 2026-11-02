@@ -1,9 +1,12 @@
 """Turn a Day 2 harness run (reproduce_repo2.py) into golden files.
 
+Golden data are per platform (AUDIT.md F18); ``make golden-baseline`` runs
+the harness and this script for the current machine.
+
 Usage::
 
-    python tools/legacy/make_golden.py --run ../legacy/runs/repo2_default \
-        --out tests/golden/data
+    python tools/legacy/make_golden.py --run ../legacy/runs/repo2_darwin-arm64 \
+        --out tests/golden/data/darwin-arm64
 """
 
 from __future__ import annotations

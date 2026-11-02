@@ -15,7 +15,7 @@ from person_search.eval.frame_metrics import (
     system_metrics,
 )
 
-REPORT_LABELS = Path(__file__).resolve().parents[1] / "golden" / "data" / "labels"
+REPORT_LABELS = Path(__file__).resolve().parents[1] / "golden" / "data" / "labels"  # shared
 
 
 def _write(tmp: Path, case: str, tp, fp, fn) -> None:
