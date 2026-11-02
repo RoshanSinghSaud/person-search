@@ -7,6 +7,10 @@ Audited commits:
 | repo 1 `meteroid27/person-reid-clip` | `5d8768a` (2026-08-23) | base for ingest + IRRA |
 | repo 2 `Amritkandel49/Person-Based-Video-Segmentation-Using-Reidentification-And-Tracking` | `5153437` (2026-05-02, single commit) | OSNet, scoring, eval data |
 
+Confirmed by the team (2026-11-02): repo 1 holds the final IRRA code (nothing
+was updated after it), and the code may be republished. Label provenance stays
+unknown; decision 0006 fixes how the labels are used.
+
 Weights audited: team Drive folder (YOLO, OSNet campus, OSNet Market-1501) and
 Hugging Face `prasish17/clip-text-query` / `clip-image-query` (public, not
 gated). SHA-256s are in `models/README.md` via `scripts/fetch_weights.py`.
@@ -37,7 +41,7 @@ gated). SHA-256s are in `models/README.md` via `scripts/fetch_weights.py`.
 | F3 | Nobody has measured speed or text search on video | **Confirmed** | Repo 2 has no timing. Repo 1 `run_reid_multi` prints a progress "proc-fps" only. Model 2's only numbers are on cropped images. First numbers are in section 4. |
 | F4 | The configs disagree | **Confirmed, plus more** | See the table in section 3. The report also contradicts itself: tau_base "e.g. 0.5" (eq. 4-33) vs absolute threshold 0.7 (section 5.4.5). `reid_main_prev.py` / `reid_main_tmp.py` hold yet another config (det 0.5, threshold 0.7, 10 fps). |
 | F5 | Keep the detection setting that reproduces the report's run | **No single setting does (Day 2)** | Each committed `output_annotated.mp4` is reproduced frame for frame, but by different settings: case 1 by det 0.5 / max_cosine_distance 0.3; cases 2-3 by det 0.4 / 0.2 with tau_base 0.7; case 4 by det 0.4 / 0.2 with tau_base 0.65 (at 0.7 case 4 is "no match"). Default kept = repo 2's final code (det 0.4 / 0.2 / tau 0.65): exact legacy parity, 4/4 hits, best F1 of the 4/4 configurations. Section 5 and decision 0002. |
-| F6 | The repo's labels belong to the report's run, not the paper's | **Confirmed, with a caveat** | The 4 `evaluation.json` files give exactly the report's 89.05% F1 (1073/74/190; unit test `test_reproduces_report_f1`). But they were not labelled on the committed videos: every case has frames labelled TP/FP with no box drawn (25, 61, 50, 19) and boxed frames left unlabelled (3, 3, 12, 3). Use TP + FN as ground truth for any new run; do not expect TP + FP to equal a selection. |
+| F6 | The repo's labels belong to the report's run, not the paper's | **Confirmed, with a caveat** | The 4 `evaluation.json` files give exactly the report's 89.05% F1 (1073/74/190; unit test `test_reproduces_report_f1`). But they were not labelled on the committed videos: every case has frames labelled TP/FP with no box drawn (25, 61, 50, 19) and boxed frames left unlabelled (3, 3, 12, 3). Use TP + FN as ground truth for any new run; do not expect TP + FP to equal a selection (decision 0006). |
 | F7 | Failures are silent | **Confirmed, plus more** | Repo 2: no torchreid or any load error -> ImageNet ResNet50 (L104-106, L152-160); `extract` returns `None` on any error (L184-186). Repo 1: no matching keys -> base CLIP with a printed warning (`clip_inference.py` L242-244, L321-323); failed crops retried at 224x224 then `None` (L377-394); HF failure -> local path that may not exist (L442-445). Repo 1 `run_reid` defaults to `model_type="osnet"` but `FeatureExtractor` was deleted from that file (L416, L454): the default call raises `NameError`. |
 | F8 | IRRA dominates the cost; no batching; repo 2 writes every crop | **Confirmed** | One crop per forward pass in both repos; repo 2 `cv2.imwrite` per crop (L514). Measured cost split in section 4. |
 | F9 | The 4 test cases give both query types ground truth | **Confirmed** | `evaluation.json` TP + FN = frames with the target, in sampled-frame (0-based) space. Golden track IDs per test case are in `tests/golden/data/*.json`, ready for Day 9's text targets. |

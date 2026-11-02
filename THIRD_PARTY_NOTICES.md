@@ -38,7 +38,7 @@ Zhou, Yang, Cavallaro, Xiang. *Omni-Scale Feature Learning for Person Re-Identif
 | From | What | License |
 |---|---|---|
 | repo 1 `meteroid27/person-reid-clip` (`clip_inference.py`, `reid_main.py`) | IRRA loading, prompt-token text path, ingest loop | MIT |
-| repo 2 `Amritkandel49/Person-Based-Video-Segmentation-...` (`pole/reid_main.py`, `utilities/`) | OSNet extractor, track scoring, dynamic threshold, annotated video, frame metrics | no license file - **get the team's written OK before publishing** |
+| repo 2 `Amritkandel49/Person-Based-Video-Segmentation-...` (`pole/reid_main.py`, `utilities/`) | OSNet extractor, track scoring, dynamic threshold, annotated video, frame metrics | no license file; the team approved republishing this code (2026-11-02) |
 | torchreid `metrics/rank.py` | Market-1501 mAP/CMC protocol (reimplemented; a unit test compares against it) | MIT |
 
 ## Runtime dependencies with copyleft licenses

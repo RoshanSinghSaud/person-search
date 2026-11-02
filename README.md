@@ -154,20 +154,6 @@ vector lookup.
 
 Details, the config table and all findings: [AUDIT.md](AUDIT.md).
 
-### Where this leaves the 30-day plan
-
-| Roadmap item | State |
-|---|---|
-| Before Day 1: weights, clone both repos | done (`make legacy`, `make weights`; Drive + HF both reachable) |
-| Before Day 1: Amrit's campus test split, IRRA friend's latest code + college split, team OK to republish | **still yours** - only people can do these |
-| Day 1: env, AUDIT.md | done |
-| Day 2: reproduce repo 2, compare with labels, keep crops/track IDs, time a repo 1 text query | done (`tools/legacy/reproduce_repo2.py`, `time_repo1_text.py`); crops and track IDs are in `../legacy/runs/` on the machine that ran it, re-create with `make reproduce` |
-| Day 3: src layout, pyproject groups, ruff, pre-commit, CI, config.py | done (push to GitHub and add the badge) |
-| Day 4-5: Detector/Tracker/Encoder interfaces, OSNet + IRRA with loud failures and parity tests | done |
-| Day 6: scoring unit tests, `pipeline.run`, `make golden` | done |
-| Day 7 | free: write the Week 1 README section and decision notes in your own words |
-| Day 8+ | MLflow registry, gate set, text test set, Qdrant, ... as planned. `eval/reid.py`, `search/text.py`, `search/hybrid.py`, `core/fusion.py` and `IngestResult.save/load` are already there to build on |
-
 ## Credits
 
 The research system is the team's final-year project and paper:
