@@ -4,8 +4,7 @@ Find a person in indexed video **by photo** (OSNet, from the ICCVBIC 2026 paper)
 **by description** (IRRA, model 2) or **by both**. This repo turns the team's
 final-year system into a production service: index once, search many.
 
-<!-- After pushing to GitHub, replace OWNER/REPO: -->
-<!-- [![CI](https://github.com/OWNER/REPO/actions/workflows/ci.yml/badge.svg)](https://github.com/OWNER/REPO/actions/workflows/ci.yml) -->
+[![CI](https://github.com/RoshanSinghSaud/person-search/actions/workflows/ci.yml/badge.svg)](https://github.com/RoshanSinghSaud/person-search/actions/workflows/ci.yml)
 
 > **Status: pre-Day-1 setup and Week 1 extraction done.** Both legacy repos are
 > audited ([AUDIT.md](AUDIT.md)); detection, tracking, OSNet, IRRA, scoring and
