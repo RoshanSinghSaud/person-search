@@ -2613,6 +2613,7 @@ dependencies = [
     { name = "ftfy" },
     { name = "huggingface-hub" },
     { name = "numpy" },
+    { name = "onnxruntime" },
     { name = "opencv-python" },
     { name = "pillow" },
     { name = "pydantic" },
@@ -2634,6 +2635,7 @@ dependencies = [
 dev = [
     { name = "gdown" },
     { name = "mypy" },
+    { name = "onnx" },
     { name = "pre-commit", version = "4.6.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
     { name = "pre-commit", version = "4.7.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
     { name = "pytest" },
@@ -2647,7 +2649,6 @@ eval = [
     { name = "matplotlib", version = "3.11.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
     { name = "mlflow" },
     { name = "onnx" },
-    { name = "onnxruntime" },
     { name = "pandas", version = "2.3.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
     { name = "pandas", version = "3.0.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
 ]
@@ -2668,6 +2669,7 @@ requires-dist = [
     { name = "ftfy", specifier = ">=6.1" },
     { name = "huggingface-hub", specifier = ">=0.23" },
     { name = "numpy", specifier = "==1.26.4" },
+    { name = "onnxruntime", specifier = ">=1.18,<1.24" },
     { name = "opencv-python", specifier = "==4.10.0.84" },
     { name = "pillow", specifier = "==10.3.0" },
     { name = "pydantic", specifier = ">=2.7,<3" },
@@ -2686,6 +2688,7 @@ requires-dist = [
 dev = [
     { name = "gdown", specifier = ">=5.2" },
     { name = "mypy", specifier = ">=1.10" },
+    { name = "onnx", specifier = ">=1.16" },
     { name = "pre-commit", specifier = ">=3.7" },
     { name = "pytest", specifier = ">=8.2" },
     { name = "pytest-cov", specifier = ">=5.0" },
@@ -2697,7 +2700,6 @@ eval = [
     { name = "matplotlib", specifier = ">=3.8" },
     { name = "mlflow", specifier = ">=2.14" },
     { name = "onnx", specifier = ">=1.16" },
-    { name = "onnxruntime", specifier = ">=1.18,<1.24" },
     { name = "pandas", specifier = ">=2.2" },
 ]
 serve = [

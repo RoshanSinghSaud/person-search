@@ -65,6 +65,8 @@ def build_irra(settings: Settings) -> IRRAEncoder:
         batch_size=s.batch_size,
         precision=s.precision,
         version=s.version,
+        image_onnx=s.image_onnx,
+        onnx_threads=settings.torch_threads,
     )
 
 

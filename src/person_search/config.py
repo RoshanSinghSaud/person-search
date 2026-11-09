@@ -79,6 +79,9 @@ class IRRASettings(BaseModel):
     batch_size: int = Field(16, gt=0)
     precision: Literal["fp32", "fp16"] = "fp32"
     enabled: bool = Field(True, description="embed IRRA image vectors during ingest")
+    image_onnx: Path | None = Field(
+        None, description="ONNX image tower (FP32 or INT8) used instead of PyTorch's"
+    )
 
 
 class ScoringSettings(BaseModel):
