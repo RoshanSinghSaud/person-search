@@ -1,15 +1,22 @@
-"""Vector index (Day 10).
+"""Vector index: one point per tracked detection, two named vectors (Day 10).
 
-Planned contents:
-
-* ``base.py``   - ``VectorIndex`` protocol: ``upsert(points)``, ``search(vector_name,
-  query, limit, filters)``, ``fetch_track(video, track_id)``, ``count()``.
-* ``qdrant.py`` - Qdrant implementation; one point per sampled detection with two
-  named vectors (``osnet``, ``irra``) and payload (video, camera, track, frame,
-  sample, bbox); point IDs from ``uuid5(video_hash, frame, track)`` so
-  re-ingesting a video adds 0 points.
-* ``memory.py`` - in-memory fake for tests.
-
-``person_search.ingest.IngestResult.observations`` already carries everything a
-point needs.
+* :mod:`~person_search.index.base`   - ``VectorIndex``, ``Point``, ``Hit``, ``SearchFilter``
+* :mod:`~person_search.index.points` - ingest observations <-> points, uuid5 point IDs
+* :mod:`~person_search.index.memory` - in-memory fake for tests
+* :mod:`~person_search.index.qdrant` - Qdrant (local mode or server)
 """
+
+from person_search.index.base import Hit, Point, SearchFilter, VectorIndex
+from person_search.index.memory import InMemoryIndex
+from person_search.index.points import point_id, points_from_ingest, video_fingerprint
+
+__all__ = [
+    "Hit",
+    "InMemoryIndex",
+    "Point",
+    "SearchFilter",
+    "VectorIndex",
+    "point_id",
+    "points_from_ingest",
+    "video_fingerprint",
+]

@@ -1,0 +1,38 @@
+# Model versions the project knows about: what the gate scores and the registry records.
+#
+# `production` pins the versions the service runs. The index is built with these
+# encoders and its collection name carries them (detections__irra-v1__osnet-v1),
+# so a version change also needs a new index.
+#
+# sha256 values are of the files `make weights` downloads (scripts/fetch_weights.py).
+# Metrics are filled in by `make eval-models` (Day 8); see docs/results/week2.md.
+
+production:
+  osnet: osnet-v1
+  irra: irra-v1
+
+models:
+  osnet-v0:
+    family: osnet
+    file: osnet_market_v0.pth
+    source: "team Drive: osnet_x1_0_market_256x128_amsgrad_ep150_stp60_lr0.0015_b64_fb10_softmax_labelsmooth_flip.pth"
+    sha256: 2809d3227f7d078f6045f7feb874a34d0684f0e0057b264b99adccf7d4519154
+    role: "Market-1501 only; a bad model the gate must block"
+  osnet-v1:
+    family: osnet
+    file: osnet_campus_v1.pth.tar
+    source: "team Drive: osnet_finetuned_model.pth.tar-60 (campus fine-tune, 70 IDs, epoch 60)"
+    sha256: 52e15750640711566469bf44e55cc04a22193b27f138df7f57b7c4d16c5f2377
+    role: "production, photo queries"
+  irra-v0:
+    family: irra
+    file: clip_vit_b16_v0.pt
+    source: "OpenAI CLIP ViT-B/16 (openaipublic.azureedge.net), no fine-tuning, no prompt tokens"
+    sha256: 5806e77cd80f8b59890b7e101eabd078d9fb84e6937f9e85e4ecb61988df416f
+    role: "vanilla CLIP; a bad model the gate must block"
+  irra-v1:
+    family: irra
+    file: irra_v1.pth
+    source: "Hugging Face prasish17/clip-text-query: best_model_text.pth"
+    sha256: b1e77ac829d5bd609be0023b0c3cd033c7e18d7dffa465b817017f5bbf936809
+    role: "production, text queries"

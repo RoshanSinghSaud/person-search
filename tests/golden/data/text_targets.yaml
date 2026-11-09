@@ -1,0 +1,48 @@
+# Ground truth for the text test set (Day 9): which tracks show each case's target.
+#
+# Track IDs are those of the default ingest (det 0.4, max_cosine_distance 0.2,
+# linux-x86_64), the same IDs as repo 2's Day 2 run and the golden files.
+#
+# How these were made (2026-11-09, before any text search ran):
+#   1. tools/analysis/track_contact_sheet.py drew every track of every case next
+#      to query.jpg; candidate tracks were then drawn crop by crop over their life.
+#   2. A segment is a run of sampled frames (inclusive, sample-index space) in
+#      which that track's box is on the target person. DeepSORT switches
+#      identities in crowded scenes, so one track can hold the target for only
+#      part of its life (case 2 track 49, case 3 tracks 4/52/96).
+#   3. Boundaries were read from crops every 3-9 samples, so they are accurate
+#      to about +-4 samples. Target appearances shorter than ~1 s may be missing.
+#   4. Cross-check: the segments agree with the TP + FN frames of each
+#      evaluation.json (case 2: 2-234 and 482-705; case 3: 0-161, ~180-231,
+#      293-351; case 4: 0-58). Where they disagree, the crops decided.
+#
+# Findings worth knowing:
+#   * case 1: tracks 8 and 12 are two boxes on the same person (s50-118); 12
+#     then coasts onto background (AUDIT F11). The target wears a white face mask
+#     and a red-and-white colour-block jacket; the 29x77 px query shows neither
+#     clearly.
+#   * case 3: the photo search's second accepted track (162, score 0.657) is a
+#     different man in a green-grey jacket, so its frames are false positives.
+#   * case 4: the photo search's second accepted track (42) is a different person.
+#
+# Used by eval/text_e2e.py: a detection is "target" when (track, sample) falls in
+# a segment below.
+
+labelled_at: "2026-11-09T05:12:31Z"
+labelled_by: "Claude (assistant), visual check of crops against query.jpg; please spot-check the contact sheets in ../legacy/runs/text_targets/"
+
+cases:
+  test_case_001:
+    "8": [[14, 510]]
+    "12": [[50, 118]]
+    "1": [[146, 162]]
+  test_case_002:
+    "2": [[2, 244]]
+    "49": [[482, 668]]
+  test_case_003:
+    "4": [[2, 160]]
+    "52": [[146, 150], [176, 241]]
+    "96": [[244, 279], [285, 358]]
+    "72": [[140, 145]]
+  test_case_004:
+    "7": [[13, 64]]

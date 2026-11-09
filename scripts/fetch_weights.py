@@ -3,6 +3,9 @@
 Sources:
 * team Google Drive folder (repo 2 README): YOLO11n, OSNet campus, OSNet Market-1501
 * Hugging Face ``prasish17/clip-text-query``: IRRA (``best_model_text.pth``)
+* OpenAI: vanilla CLIP ViT-B/16 (irra v0, the gate's "bad text model")
+* Hugging Face ``prasish17/clip-image-query``: repo 1's CLIP-ReID image model,
+  only for the Day 12 comparison with repo 1's hybrid (not used by the service)
 
 Prints the SHA-256 of every file; record those when registering the models
 (Day 8). Re-running skips files that are already present.
@@ -29,7 +32,16 @@ DRIVE_FILES = {
         "osnet_market_v0.pth"
     ),
 }
-HF_FILES = {("prasish17/clip-text-query", "best_model_text.pth"): "irra_v1.pth"}
+HF_FILES = {
+    ("prasish17/clip-text-query", "best_model_text.pth"): "irra_v1.pth",
+    ("prasish17/clip-image-query", "best_model_image.pth"): "clipreid_image_legacy.pth",
+}
+URL_FILES = {
+    "clip_vit_b16_v0.pt": (
+        "https://openaipublic.azureedge.net/clip/models/"
+        "5806e77cd80f8b59890b7e101eabd078d9fb84e6937f9e85e4ecb61988df416f/ViT-B-16.pt"
+    ),
+}
 
 
 def sha256(path: Path) -> str:
@@ -68,6 +80,19 @@ def fetch_hf(out: Path) -> None:
         shutil.copyfile(path, dst)
 
 
+def fetch_urls(out: Path) -> None:
+    import urllib.request
+
+    for dst_name, url in URL_FILES.items():
+        dst = out / dst_name
+        if dst.exists():
+            continue
+        tmp = dst.with_suffix(".part")
+        with urllib.request.urlopen(url) as r, tmp.open("wb") as f:
+            shutil.copyfileobj(r, f)
+        tmp.rename(dst)
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--out", type=Path, default=Path("models"))
@@ -79,7 +104,8 @@ def main() -> int:
         fetch_drive(args.out)
     if not args.skip_hf:
         fetch_hf(args.out)
-    for name in [*DRIVE_FILES.values(), *HF_FILES.values()]:
+        fetch_urls(args.out)
+    for name in [*DRIVE_FILES.values(), *HF_FILES.values(), *URL_FILES]:
         p = args.out / name
         status = f"{sha256(p)}  {p.stat().st_size / 1e6:8.1f} MB" if p.exists() else "MISSING"
         print(f"{name:<28} {status}")

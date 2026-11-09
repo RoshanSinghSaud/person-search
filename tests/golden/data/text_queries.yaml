@@ -1,0 +1,68 @@
+# Text test set (Day 9): witness-style descriptions of each test case's target.
+#
+# Leakage rule: every description was written from the case's query.jpg ONLY,
+# before any text search was run on any video, and committed on its own before
+# the first text query. Do not edit a description after looking at results;
+# add a new one with a new id instead, and say so in the commit message.
+#
+# Three levels per target, the way a witness might report it:
+#   short    - what someone remembers at a glance (2-3 attributes)
+#   medium   - a typical report (4-5 attributes)
+#   detailed - a careful report (6+ attributes)
+#
+# All descriptions fit in IRRA's 77-token context with the 8 prompt tokens
+# (AUDIT.md F15); tests/unit/test_text_e2e.py checks the format.
+
+written_at: "2026-11-09T05:04:24Z"
+written_by: "Claude (assistant), from query.jpg only; no video frames or search results seen"
+source_images: "legacy/amrit-pbvs/test_case_00N/query.jpg (29x77 to 66x181 px crops)"
+
+cases:
+  test_case_001:
+    notes: "query crop is only 29x77 px; colours are the most reliable cue"
+    queries:
+      - id: tc1-short
+        level: short
+        text: "a man in a white top and dark trousers"
+      - id: tc1-medium
+        level: medium
+        text: "a young man wearing a white long-sleeved shirt, dark grey pants and a cap"
+      - id: tc1-detailed
+        level: detailed
+        text: "a man in a light-coloured cap and a white long-sleeved top with dark grey trousers, a dark backpack strap over his shoulder"
+
+  test_case_002:
+    queries:
+      - id: tc2-short
+        level: short
+        text: "a man in a grey hoodie with the hood up"
+      - id: tc2-medium
+        level: medium
+        text: "a man wearing a light grey hoodie with the hood over his head, black pants and a black backpack"
+      - id: tc2-detailed
+        level: detailed
+        text: "a person in a light grey hooded sweatshirt with the hood up, dark navy trousers, a black backpack and light shoes, walking with his hands in his pockets"
+
+  test_case_003:
+    queries:
+      - id: tc3-short
+        level: short
+        text: "a young man in a blue jacket and grey jeans"
+      - id: tc3-medium
+        level: medium
+        text: "a man with dark hair and a beard wearing a blue-grey zip-up hoodie and grey trousers"
+      - id: tc3-detailed
+        level: detailed
+        text: "a smiling young man with short dark hair and a beard, wearing a blue-grey zip hoodie, grey jeans, dark sneakers and a backpack"
+
+  test_case_004:
+    queries:
+      - id: tc4-short
+        level: short
+        text: "a man in a green jacket and blue jeans"
+      - id: tc4-medium
+        level: medium
+        text: "a bearded man wearing an olive jacket over a black t-shirt, light blue jeans and a backpack"
+      - id: tc4-detailed
+        level: detailed
+        text: "a man with dark hair and a beard in an open olive-green jacket over a black printed t-shirt, light blue jeans, white sneakers and a backpack"

@@ -37,6 +37,7 @@ dependencies = [
     "pydantic-settings>=2.3,<3",
     "pyyaml>=6.0",
     "huggingface-hub>=0.23",
+    "qdrant-client>=1.10",               # the vector index (local mode needs no server)
 ]
 
 [project.scripts]
@@ -48,18 +49,17 @@ serve = [
     "fastapi>=0.111",
     "uvicorn[standard]>=0.30",
     "python-multipart>=0.0.9",
-    "qdrant-client>=1.10",
     "redis>=5.0",
     "rq>=1.16",
     "prometheus-client>=0.20",
 ]
-# Evaluation, experiment tracking, gate set access (Week 2 / Day 24).
+# Evaluation, experiment tracking, gate set access (Week 2 / Day 24): make eval-models, make register.
 eval = [
     "mlflow>=2.14",
     "pandas>=2.2",
     "matplotlib>=3.8",
     "onnx>=1.16",
-    "onnxruntime>=1.18",
+    "onnxruntime>=1.18,<1.24",           # 1.24 dropped Python 3.10 wheels
 ]
 dev = [
     "pytest>=8.2",
@@ -114,6 +114,7 @@ ignore = [
 "tests/**" = ["PLR0915", "N802", "N806"]
 "src/person_search/eval/reid.py" = ["N815"]   # mAP is the field's own spelling
 "tools/legacy/**" = ["PLR0915", "PLR0912", "PLW0603"]
+"scripts/**" = ["PLR0915", "PLR0912"]          # linear run scripts: one long main() reads best
 
 [tool.ruff.lint.isort]
 known-first-party = ["person_search"]

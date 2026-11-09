@@ -74,11 +74,13 @@ class OSNetEncoder:
         return model.to(self.device).eval()
 
     @torch.inference_mode()
-    def encode_images(self, images: Sequence[np.ndarray]) -> np.ndarray:
+    def encode_images(self, images: Sequence[np.ndarray], *, normalize: bool = True) -> np.ndarray:
+        """``normalize=False`` returns the raw features (torchreid's test protocol)."""
         if len(images) == 0:
             return np.zeros((0, self.dim), dtype=np.float32)
         out = []
         for chunk in batched(images, self.batch_size):
             x = to_batch(chunk, self.transform).to(self.device)
-            out.append(l2_normalize(self.model(x)).cpu())
+            feats = self.model(x)
+            out.append((l2_normalize(feats) if normalize else feats).cpu())
         return torch.cat(out).numpy().astype(np.float32, copy=False)

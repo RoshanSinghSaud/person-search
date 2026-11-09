@@ -1,0 +1,337 @@
+"""Write docs/results/week2.md from the Week 2 run outputs (no number is typed by hand).
+
+Reads, from ``--runs`` (default ``../legacy/runs/week2``):
+``index.json``, ``search_eval.json``, ``golden_reprocess.log``, ``model_eval.json``,
+``profile_case2_batched.json``, ``profile_case2_b1_240.json``,
+``profile_case2_batched_240.json``, ``cprofile_case2_60.txt``, ``register.log``;
+plus ``../legacy/runs/repo2_default/summary.json`` (Day 2 timings of repo 2).
+
+Usage::
+
+    python scripts/week2_report.py --runs ../legacy/runs/week2 --out docs/results/week2.md
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import re
+from pathlib import Path
+from typing import Any
+
+CASES = ("test_case_001", "test_case_002", "test_case_003", "test_case_004")
+STAGE_NAMES = {
+    "decode": "decode",
+    "detect": "YOLO11n (640 px)",
+    "track": "DeepSORT (incl. its MobileNet embedder)",
+    "embed:osnet": "OSNet x1_0",
+    "embed:irra": "IRRA image (ViT-B/16)",
+}
+
+
+def pct(x: float, d: int = 1) -> str:
+    return f"{100 * x:.{d}f}%"
+
+
+def load(p: Path) -> Any:
+    return json.loads(p.read_text())
+
+
+def golden_times(log: Path) -> dict[str, dict[str, Any]]:
+    out = {}
+    for line in log.read_text().splitlines():
+        m = re.match(r"(test_case_\d+): (PASS|FAIL) \((.*)\) \[(\d+)s\]", line)
+        if m:
+            out[m.group(1)] = {"status": m.group(2), "diff": m.group(3), "seconds": int(m.group(4))}
+    return out
+
+
+def section_models(me: dict[str, Any]) -> list[str]:
+    v = me["versions"]
+    md = [
+        "## Day 8 - model versions on the gate set",
+        "",
+        "Gate set: campus ReID test split (30 IDs held out of fine-tuning, 284 query /",
+        "1191 gallery crops), cached crops of the 4 test videos, and the 12 witness",
+        "descriptions. Built by `make gate-set`; scored by `make eval-models`.",
+        "",
+        "**OSNet (photo queries)**",
+        "",
+        "| Version | Role | Campus mAP (published protocol) | Rank-1 | mAP (cosine, as served) "
+        "| Rank-1 | Photo frame F1, 4 cases | Cases found |",
+        "|---|---|---:|---:|---:|---:|---:|---:|",
+    ]
+    for name, r in sorted(v.items()):
+        if r["family"] != "osnet":
+            continue
+        m = r["metrics"]
+        md.append(
+            f"| {name} | {r['role']} | {pct(m['campus_mAP_euclidean_raw'])} "
+            f"| {pct(m['campus_rank1_euclidean_raw'])} | {pct(m['campus_mAP_cosine'])} "
+            f"| {pct(m['campus_rank1_cosine'])} | {pct(m['photo_f1'], 2)} "
+            f"| {round(m['photo_hit_rate'] * 4)}/4 |"
+        )
+    md += [
+        "",
+        "Published (Amrit's torchreid run): osnet v1 75.4% mAP / 81.7% Rank-1;",
+        "Market-1501 model on campus 29.2% mAP / 50.7% Rank-1.",
+        "",
+        "Photo F1 on the 4 videos does not rank the two models (v0 wins on cases 2-3,",
+        "loses badly on case 4; thresholds were tuned for v1): campus mAP does (AUDIT.md F26).",
+        "",
+        "**IRRA (text queries)**",
+        "",
+        "| Version | Role | Text Hit@1 | Text Hit@5 | MRR | Image tower campus mAP / Rank-1 "
+        "| College Rank-1 |",
+        "|---|---|---:|---:|---:|---:|---|",
+    ]
+    for name, r in sorted(v.items()):
+        if r["family"] != "irra":
+            continue
+        m = r["metrics"]
+        md.append(
+            f"| {name} | {r['role']} | {m['text_hit1_count']}/{m['text_n']} "
+            f"| {m['text_hit5_count']}/{m['text_n']} | {m['text_mrr']:.3f} "
+            f"| {pct(m['campus_mAP_cosine'])} / {pct(m['campus_rank1_cosine'])} "
+            "| not measured: split missing |"
+        )
+    md += [
+        "",
+        "Published: irra v1 65.22%, vanilla CLIP 23.55% college Rank-1 (cannot be re-measured",
+        "until the college text-image test split arrives).",
+        "",
+        "IRRA's image tower beats OSNet on the campus split, but IRRA was trained on the team's",
+        "college data, which may show the same students: treat it as possible leakage (F27).",
+        "",
+    ]
+    return md
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument("--runs", type=Path, default=Path("../legacy/runs/week2"))
+    ap.add_argument("--day2", type=Path, default=Path("../legacy/runs/repo2_default/summary.json"))
+    ap.add_argument("--out", type=Path, default=Path("docs/results/week2.md"))
+    args = ap.parse_args()
+    runs = args.runs
+    idx = load(runs / "index.json")
+    se = load(runs / "search_eval.json")
+    me = load(runs / "model_eval.json") if (runs / "model_eval.json").exists() else None
+    gold = golden_times(runs / "golden_reprocess.log")
+    day2 = load(args.day2) if args.day2.exists() else None
+    prof = load(runs / "profile_case2_batched.json")
+    b1 = load(runs / "profile_case2_b1_240.json")
+    bn = load(runs / "profile_case2_batched_240.json")
+    machine = prof["machine"]
+
+    md = [
+        "# Week 2 results (Days 8-14)",
+        "",
+        f"Machine: {machine['platform']}, {machine['cpu_count']} vCPU, no GPU, "
+        f"torch {machine['torch']}.",
+        f"PyTorch ran on {machine['torch_threads']} thread(s): ultralytics resets the thread count",
+        "to cpu_count - 1 on its first prediction (AUDIT.md F25).",
+        "linux-x86_64 is the reference platform (decision 0005). Every number below is",
+        "generated by `scripts/week2_report.py` from the run outputs in `../legacy/runs/week2/`.",
+        "",
+    ]
+    if me:
+        md += section_models(me)
+
+    # ---------------------------------------------------------------- Day 9/10
+    md += [
+        "## Day 9 - text test set",
+        "",
+        "12 witness-style descriptions (3 per case: short, medium, detailed) written from",
+        "each `query.jpg` and committed before any text search ran; target tracks labelled",
+        "as sample ranges from crop strips (decision 0007).",
+        "",
+        "## Day 10 - index",
+        "",
+        f"Collection `{idx['collection']}` (Qdrant local mode, DOT on unit vectors).",
+        "",
+        "| Case | Points | With vectors | Tracks |",
+        "|---|---:|---:|---:|",
+    ]
+    for c in CASES:
+        v = idx["videos"][c]
+        md.append(f"| {c} | {v['points']:,} | {v['embedded_points']:,} | {v['tracks']} |")
+    md += [
+        "",
+        f"Writing all 4 videos a second time: {idx['points_after_first_write']:,} points before, "
+        f"{idx['points_after_second_write']:,} after (**{idx['reingest_added_points']} added**).",
+        "",
+    ]
+
+    # ---------------------------------------------------------------- Day 11
+    ph = se["photo"]
+    md += [
+        "## Day 11 - photo search over the index",
+        "",
+        "| Case | Same frames as golden | Frame F1 | Accepted tracks | Indexed query p50 / p95 "
+        "| Reprocess (`pipeline.run`) | Repo 2 untouched (Day 2) |",
+        "|---|---|---:|---|---:|---:|---:|",
+    ]
+    speedups = []
+    for c in CASES:
+        r = ph["per_case"][c]
+        q_ms = r["encode_query_ms"] + r["search_ms_p50"]
+        g = gold.get(c, {})
+        d2c = day2.get("cases", {}).get(c.removeprefix("test_case_")) if day2 else None
+        d2 = round(d2c["seconds"]) if d2c else None
+        if g:
+            speedups.append(g["seconds"] * 1000 / q_ms)
+        md.append(
+            f"| {c} | {'yes' if r['equals_golden'] else 'no'} | {pct(r['f1'], 2)} "
+            f"| {', '.join(r['accepted_tracks'])} "
+            f"| {q_ms:.0f} ms / {r['encode_query_ms'] + r['search_ms_p95']:.0f} ms "
+            f"| {g.get('seconds', '?')} s | {d2 if d2 is not None else '?'} s |"
+        )
+    sysm = ph["system"]
+    md += [
+        "",
+        f"System frame F1 {pct(sysm['f1'], 2)} (P {pct(sysm['precision'], 2)}, "
+        f"R {pct(sysm['recall'], 2)}): the golden baseline, unchanged.",
+        "Indexed query = OSNet on the photo + retrieval + fetching candidate tracks + the paper's",
+        "scoring. Reprocess = decode + YOLO + DeepSORT + OSNet over the whole video, as both",
+        "legacy repos do per query. Repo 2's Day 2 times ran on a busier machine.",
+    ]
+    if speedups:
+        md.append(
+            f"Speed-up per query: {min(speedups):,.0f}x to {max(speedups):,.0f}x "
+            "(the video is ingested once, ahead of time)."
+        )
+    stage = ph["per_case"][CASES[1]]["stage_ms_last"]
+    md += [
+        "",
+        "Where an indexed photo query's time goes (case 2, one run): "
+        + ", ".join(f"{k} {v:.0f} ms" for k, v in stage.items())
+        + f"; OSNet on the photo {ph['per_case'][CASES[1]]['encode_query_ms']:.0f} ms.",
+        "",
+    ]
+
+    # ---------------------------------------------------------------- Day 12
+    tx = se["text"]
+    md += [
+        "## Day 12 - text and hybrid search: the first end-to-end numbers",
+        "",
+        "12 descriptions, each searched in its own video (10-41 tracks). A ranked track",
+        "counts as the target when most of the detections behind its score show the target",
+        "(decision 0007); *pure* = most of all its detections do.",
+        "",
+        "| Method | Hit@1 | Hit@5 | MRR | Frame recall of top track | Hit@1 (pure) |",
+        "|---|---:|---:|---:|---:|---:|",
+    ]
+    order = [
+        "text",
+        "hybrid late fusion a=0.3",
+        "hybrid late fusion a=0.5",
+        "hybrid late fusion a=0.7",
+        "embedding sum (repo 1)",
+        "embedding sum, one space",
+        "photo only (OSNet)",
+    ]
+    for m in order:
+        s = tx["summary"][m]
+        n = s["n"]
+        md.append(
+            f"| {m} | {s['hit@1_count']} ({pct(s['hit@1'], 0)}) | {s['hit@5_count']} "
+            f"({pct(s['hit@5'], 0)}) | {s['mrr']:.3f} | {pct(s['frame_recall@1'])} "
+            f"| {round(s['hit@1_pure'] * n)}/{n} |"
+        )
+    md += [
+        "",
+        "Hybrid = photo + description; *a* = weight of the photo score. *Embedding sum (repo 1)*",
+        "adds repo 1's CLIP-ReID photo embedding to the IRRA text embedding (two different",
+        "spaces, AUDIT.md F2). *One space* is the same sum with the photo embedded by IRRA's",
+        "own image tower. *Photo only* is OSNet's track ranking for the case's photo (4 queries).",
+        "",
+        "By description level (Hit@1, Hit@5; 4 queries each):",
+        "",
+        "| Method | short | medium | detailed |",
+        "|---|---|---|---|",
+    ]
+    for m in order[:-1]:
+        lv = tx["by_level"][m]
+        md.append(
+            f"| {m} | "
+            + " | ".join(
+                f"{lv[x]['hit@1_count']}, {lv[x]['hit@5_count']}"
+                for x in ("short", "medium", "detailed")
+            )
+            + " |"
+        )
+    md += ["", "Text query, one row per description:", ""]
+    md += ["| Query | Top track (score) | Target? | First target rank |", "|---|---|---|---:|"]
+    for r in tx["per_query"]["text"]:
+        top = r["top"][0]
+        md.append(
+            f"| {r['query_id']} | {top['track']} ({top['score']}) "
+            f"| {'yes' if top['evidence'] > 0.5 else 'no'} | {r['first_hit'] or '-'} |"
+        )
+    sens_path = runs / "text_label_sensitivity.json"
+    if sens_path.exists():
+        sens = load(sens_path)
+        md += [
+            "",
+            "Sensitivity to the target labels (every segment shrunk or grown by d samples):",
+            "",
+            "| d | " + " | ".join(sens) + " |",
+            "|---|" + "---:|" * len(sens),
+            "| text Hit@1 | " + " | ".join(v["hit@1"] for v in sens.values()) + " |",
+            "| text Hit@5 | " + " | ".join(v["hit@5"] for v in sens.values()) + " |",
+        ]
+    qms = tx["query_ms"]
+    md += [
+        "",
+        f"Indexed text and hybrid search return the same top 5 as a full scan for all "
+        f"{len(tx['indexed_checks'])} query/method pairs: **{tx['indexed_equals_full_scan']}**.",
+        f"Query time p50 (index only): text {qms['text_p50']} ms, hybrid {qms['hybrid_p50']} ms; "
+        f"IRRA text encoding {qms['encode_text_mean']} ms.",
+        "",
+    ]
+
+    # ---------------------------------------------------------------- Day 13
+    total = sum(v["seconds"] for v in prof["stages"].values())
+    md += [
+        "## Day 13 - where ingest time goes",
+        "",
+        f"Test case 2, full video ({prof['samples']} sampled frames, {prof['observations']:,} "
+        f"observations, {prof['embedded_crops']:,} embedded crops, {prof['tracks']} tracks), "
+        f"both encoders, crops batched per frame:",
+        "",
+        "| Stage | Seconds | Share | Per embedded crop |",
+        "|---|---:|---:|---:|",
+    ]
+    for k, v in sorted(prof["stages"].items(), key=lambda kv: -kv[1]["seconds"]):
+        per = f"{v['ms_per_crop']:.0f} ms" if "ms_per_crop" in v else ""
+        md.append(f"| {STAGE_NAMES.get(k, k)} | {v['seconds']:.1f} | {pct(v['share'])} | {per} |")
+    md += [
+        f"| **total** | **{total:.1f}** | | {prof['samples_per_s']} sampled frames/s |",
+        "",
+        "Batching (first 240 sampled frames of case 2):",
+        "",
+        "| Crops per forward pass | Wall time | Sampled frames/s | OSNet ms/crop | IRRA ms/crop |",
+        "|---|---:|---:|---:|---:|",
+    ]
+    for label, p in (("1 (legacy)", b1), ("all crops of a frame (batched)", bn)):
+        md.append(
+            f"| {label} | {p['wall_seconds']} s | {p['samples_per_s']} "
+            f"| {p['stages']['embed:osnet']['ms_per_crop']:.0f} "
+            f"| {p['stages']['embed:irra']['ms_per_crop']:.0f} |"
+        )
+    gp = sum(1 for g in gold.values() if g["status"] == "PASS")
+    md += [
+        "",
+        f"`make golden` after all Week 2 changes: {gp}/4 cases identical to repo 2.",
+        "cProfile of 60 frames: `../legacy/runs/week2/cprofile_case2_60.txt`.",
+        "",
+    ]
+    args.out.parent.mkdir(parents=True, exist_ok=True)
+    args.out.write_text("\n".join(md))
+    print(f"wrote {args.out}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
