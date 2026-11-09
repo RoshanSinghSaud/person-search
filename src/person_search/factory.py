@@ -38,6 +38,7 @@ def build_detector(settings: Settings) -> YoloDetector:
         person_class_id=d.person_class_id,
         resize_width=d.resize_width,
         device=settings.device,
+        torch_threads=settings.torch_threads,
     )
 
 
