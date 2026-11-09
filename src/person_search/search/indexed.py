@@ -47,7 +47,6 @@ from dataclasses import dataclass, field
 import numpy as np
 
 from person_search.config import FusionSettings, ScoringSettings
-from person_search.core.fusion import late_fusion
 from person_search.core.scoring import FrameSim, TrackScore, rank_tracks
 from person_search.index.base import Hit, SearchFilter, TrackKey, VectorIndex
 from person_search.index.points import observations_by_video
@@ -266,6 +265,5 @@ __all__ = [
     "IndexedSearch",
     "RankedTrack",
     "SearchStats",
-    "late_fusion",
     "ranked_from_scores",
 ]
