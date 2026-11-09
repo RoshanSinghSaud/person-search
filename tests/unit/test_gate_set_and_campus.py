@@ -97,3 +97,22 @@ def test_vectors_can_be_reused_from_the_ingest_after_a_spot_check(tmp_path, text
 
     with pytest.raises(AssertionError, match="differs"):
         case.spot_check(ingest, "osnet", Off("osnet"))
+
+
+def test_gate_rule_blocks_drops_and_lost_hits():
+    from person_search.eval.gate import compare_versions
+
+    def irra(m_ap, hits):
+        return {
+            "family": "irra",
+            "metrics": {"campus_mAP_cosine": m_ap},
+            "details": {"text": [{"query_id": q, "hit@1": q in hits} for q in ("a", "b", "c")]},
+        }
+
+    prod = irra(0.78, {"a", "b"})
+    assert compare_versions(prod, irra(0.775, {"a", "b", "c"})) == []  # -0.5 point is fine
+    assert compare_versions(prod, irra(0.76, {"a", "b"})) == ["campus mAP dropped 2.00 points"]
+    assert compare_versions(prod, irra(0.78, {"a", "c"})) == ["text Hit@1 lost on b"]
+    osnet = {"family": "osnet", "metrics": {"campus_mAP_cosine": 0.76, "photo_f1": 0.85}}
+    worse = {"family": "osnet", "metrics": {"campus_mAP_cosine": 0.29, "photo_f1": 0.86}}
+    assert compare_versions(osnet, worse) == ["campus mAP dropped 47.00 points"]

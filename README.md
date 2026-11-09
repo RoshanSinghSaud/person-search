@@ -6,7 +6,7 @@ final-year system into a production service: index once, search many.
 
 [![CI](https://github.com/RoshanSinghSaud/person-search/actions/workflows/ci.yml/badge.svg)](https://github.com/RoshanSinghSaud/person-search/actions/workflows/ci.yml)
 
-> **Status: Weeks 1-2 done.** Week 1 extracted both legacy repos into modules
+> **Status: Weeks 1-2 done; Week 3 step 1 (IRRA INT8) done.** Week 1 extracted both legacy repos into modules
 > with parity and golden tests ([AUDIT.md](AUDIT.md)). Week 2 added evaluation
 > for photo and text queries, a Qdrant index holding both vectors, indexed
 > photo, text and hybrid search (exactly equal to a full scan), the first
@@ -229,6 +229,26 @@ IRRA's high campus score may be train/test overlap (F27). IRRA's college Rank-1
 cannot be re-measured until the college test split arrives.
 
 Details, the config table and all findings: [AUDIT.md](AUDIT.md).
+
+### Week 3, step 1: IRRA image tower in ONNX INT8
+
+Full tables: [docs/results/week3_onnx.md](docs/results/week3_onnx.md); decision 0011.
+
+| IRRA image tower | Size | ms per crop (batch 32, 2 threads) | Campus mAP | Text Hit@1 / Hit@5 |
+|---|---:|---:|---:|---:|
+| PyTorch FP32 (irra-v1) | 345 MB | 125 | 78.0% | 8/12 / 11/12 |
+| ONNX FP32 | 345 MB | 126 | (cosine > 0.9999 vs PyTorch) | same |
+| **ONNX INT8 (irra-v2)** | **89 MB** | **40** | 77.4% | 8/12 / 11/12 |
+
+INT8 is 3.2x faster, passes the gate (mAP -0.56 points, no text hit lost) and
+makes ingest 1.32x faster end to end. OSNet is now the slowest stage.
+
+```bash
+make onnx                          # export + quantize (needs models/irra_v1.pth)
+make benchmark                     # speed of the three backends
+make gate-compare CANDIDATE=irra-v2
+export PS_IRRA__IMAGE_ONNX=models/irra_v2_image_int8.onnx PS_IRRA__VERSION=irra-v2
+```
 
 ## Credits
 

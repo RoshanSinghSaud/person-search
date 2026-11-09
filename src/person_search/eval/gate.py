@@ -112,3 +112,32 @@ def text_metrics(
         "text_n": s.n,
         "per_query": [r.as_dict(top=3) for r in results],
     }
+
+
+# ------------------------------------------------------------------ the gate rule
+MAX_DROP = 0.01  # one percentage point
+
+
+def compare_versions(production: dict[str, Any], candidate: dict[str, Any]) -> list[str]:
+    """Reasons the candidate fails against production (empty list = it passes).
+
+    Both arguments are entries of ``eval_models.py``'s ``versions`` mapping for
+    the same family. Rules (decision 0010):
+
+    * campus mAP (cosine, as served) may not drop by more than 1 point;
+    * OSNet: photo frame F1 on the 4 videos may not drop by more than 1 point;
+    * IRRA: no text query that production ranks first (Hit@1) may be lost.
+    """
+    if production["family"] != candidate["family"]:
+        raise ValueError("compare versions of the same family")
+    p, c = production["metrics"], candidate["metrics"]
+    failures = []
+    for key, label in (("campus_mAP_cosine", "campus mAP"), ("photo_f1", "photo F1")):
+        if key in p and key in c and p[key] - c[key] > MAX_DROP:
+            failures.append(f"{label} dropped {100 * (p[key] - c[key]):.2f} points")
+    if production["family"] == "irra":
+        before = {q["query_id"] for q in production["details"]["text"] if q["hit@1"]}
+        after = {q["query_id"] for q in candidate["details"]["text"] if q["hit@1"]}
+        if lost := sorted(before - after):
+            failures.append(f"text Hit@1 lost on {', '.join(lost)}")
+    return failures

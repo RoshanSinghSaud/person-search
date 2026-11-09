@@ -36,3 +36,10 @@ models:
     source: "Hugging Face prasish17/clip-text-query: best_model_text.pth"
     sha256: b1e77ac829d5bd609be0023b0c3cd033c7e18d7dffa465b817017f5bbf936809
     role: "production, text queries"
+  irra-v2:
+    family: irra
+    file: irra_v1.pth
+    image_onnx: irra_v2_image_int8.onnx
+    source: "irra-v1's image tower exported to ONNX (opset 17) and quantized with ONNX Runtime dynamic INT8 (MatMul/Gemm weights, per channel); text tower = irra-v1 in PyTorch. scripts/export_onnx.py"
+    sha256: 1fae9c322c20ebd36e2b20e3d508e177022be2f34de2f4dca04ca4a07a65817c
+    role: "candidate: INT8 image tower; ships only if the gate passes"

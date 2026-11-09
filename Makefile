@@ -140,6 +140,20 @@ profile: ## Day 13: time per ingest stage on test case 2, batched vs one crop pe
 	$(PY) scripts/profile_ingest.py --cases-dir $(CASES_DIR) --case test_case_002 --max-samples 240 \
 		--out $(WEEK2_DIR)/profile_case2_batched_240.json
 
+# ---------------------------------------------------------------- Week 3
+.PHONY: onnx
+onnx: ## export IRRA's image tower to ONNX FP32 and INT8 (models/irra_v*_image_*.onnx)
+	$(PY) scripts/export_onnx.py --weights models/irra_v1.pth --out-dir models
+
+.PHONY: benchmark
+benchmark: ## PyTorch FP32 vs ONNX FP32 vs ONNX INT8 speed of IRRA's image tower
+	$(PY) scripts/benchmark_irra.py --gate-dir $(GATE_DIR) --out $(LEGACY_DIR)/runs/week3/benchmark_irra.json
+
+.PHONY: gate-compare
+gate-compare: ## gate verdict for CANDIDATE=<version> against production (exit 1 = blocked)
+	$(PY) scripts/eval_models.py compare --results $(WEEK2_DIR)/model_eval.json \
+		$(wildcard $(LEGACY_DIR)/runs/week3/model_eval_*.json) --candidate $(CANDIDATE)
+
 .PHONY: clean
 clean: ## remove caches and outputs
 	rm -rf .pytest_cache .ruff_cache .mypy_cache .coverage htmlcov outputs dist build
