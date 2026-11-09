@@ -41,7 +41,10 @@ block a worse model. Constraints:
     image tower's campus mAP as a secondary check.
 - **Until the college split arrives**, the text gate is end-to-end Hit@k on the
   12 descriptions. It is coarse (one query = 8 points), so the gate rule for text
-  is "no Hit@1 lost", not a percentage threshold.
+  is "no Hit@1 lost", not a percentage threshold. Vanilla CLIP (irra v0) loses 2
+  of IRRA v1's 8 Hit@1s (6/12) but scores Hit@5 12/12 against 11/12: enough to
+  block it, not enough to rank close candidates. The image tower's campus mAP
+  (12.8% vs 78.0%) is the clearer signal until the college split arrives.
 - **Campus mAP is the OSNet quality score; photo F1 is a regression check.** On
   the 4 test videos the Market-1501 model scores a *higher* photo F1 than the
   campus fine-tune (85.25% vs 84.70%; AUDIT.md F26): 4 cases and thresholds

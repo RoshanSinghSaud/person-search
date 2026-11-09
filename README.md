@@ -211,11 +211,22 @@ AUDIT.md F22). Indexed text and hybrid search equal a full scan for every query.
 DeepSORT 17% (mostly its own MobileNet embedder), YOLO11n 7%, decode 0.2%.
 Batching crops per frame is only 13% faster than one crop per pass on CPU.
 
-**Model versions (Day 8)** are scored on a private gate set (campus ReID test
-split + cached crops of the 4 videos + the text set) and recorded in MLflow;
-see docs/results/week2.md. The campus split reproduces the published osnet v1
-numbers exactly (75.4% mAP, 81.7% Rank-1). IRRA's college Rank-1 cannot be
-re-measured until the college test split arrives.
+**Model versions (Day 8)**, scored on a private gate set (campus ReID test split,
+cached crops of the 4 videos, the text set) and registered in MLflow
+(`person-search-osnet`, `person-search-irra`, alias `production`):
+
+| Version | Campus mAP | Photo F1, 4 videos | Text Hit@1 / Hit@5 |
+|---|---:|---:|---:|
+| osnet v0 (Market-1501) | 29.2% | 85.25% | - |
+| **osnet v1** (campus fine-tune) | **75.4%** | **84.70%** | - |
+| irra v0 (vanilla CLIP), image tower | 12.8% | - | 6/12 / 12/12 |
+| **irra v1**, image tower | **78.0%** | - | **8/12 / 11/12** |
+
+Campus mAP for OSNet uses torchreid's protocol and reproduces the published
+numbers exactly; the IRRA rows use cosine. Photo F1 on 4 videos cannot rank
+models (v0 scores higher; AUDIT.md F26), so the gate relies on campus mAP.
+IRRA's high campus score may be train/test overlap (F27). IRRA's college Rank-1
+cannot be re-measured until the college test split arrives.
 
 Details, the config table and all findings: [AUDIT.md](AUDIT.md).
 

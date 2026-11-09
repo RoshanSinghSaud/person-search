@@ -61,7 +61,7 @@ def section_models(me: dict[str, Any]) -> list[str]:
         "| Rank-1 | Photo frame F1, 4 cases | Cases found |",
         "|---|---|---:|---:|---:|---:|---:|---:|",
     ]
-    for name, r in v.items():
+    for name, r in sorted(v.items()):
         if r["family"] != "osnet":
             continue
         m = r["metrics"]
@@ -76,13 +76,16 @@ def section_models(me: dict[str, Any]) -> list[str]:
         "Published (Amrit's torchreid run): osnet v1 75.4% mAP / 81.7% Rank-1;",
         "Market-1501 model on campus 29.2% mAP / 50.7% Rank-1.",
         "",
+        "Photo F1 on the 4 videos does not rank the two models (v0 wins on cases 2-3,",
+        "loses badly on case 4; thresholds were tuned for v1): campus mAP does (AUDIT.md F26).",
+        "",
         "**IRRA (text queries)**",
         "",
         "| Version | Role | Text Hit@1 | Text Hit@5 | MRR | Image tower campus mAP / Rank-1 "
         "| College Rank-1 |",
         "|---|---|---:|---:|---:|---:|---|",
     ]
-    for name, r in v.items():
+    for name, r in sorted(v.items()):
         if r["family"] != "irra":
             continue
         m = r["metrics"]
@@ -96,6 +99,9 @@ def section_models(me: dict[str, Any]) -> list[str]:
         "",
         "Published: irra v1 65.22%, vanilla CLIP 23.55% college Rank-1 (cannot be re-measured",
         "until the college text-image test split arrives).",
+        "",
+        "IRRA's image tower beats OSNet on the campus split, but IRRA was trained on the team's",
+        "college data, which may show the same students: treat it as possible leakage (F27).",
         "",
     ]
     return md
