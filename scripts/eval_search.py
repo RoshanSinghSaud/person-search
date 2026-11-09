@@ -187,7 +187,7 @@ def main() -> int:
 
     for q in queries:
         obs = ingests[q.case].observations
-        gt = len(labels[q.case].ground_truth)
+        gt = labels[q.case].ground_truth
         segs = targets[q.case]
         emb = [i for i, o in enumerate(obs) if IRRA in o.embeddings and OSNET in o.embeddings]
         irra_m = np.stack([obs[i].embeddings[IRRA] for i in emb])
@@ -262,7 +262,7 @@ def main() -> int:
         add(
             "photo only (OSNet)",
             QueryResult(
-                f"{c}-photo", c, "photo", "photo only (OSNet)", ranked, len(labels[c].ground_truth)
+                f"{c}-photo", c, "photo", "photo only (OSNet)", ranked, labels[c].ground_truth
             ),
         )
 

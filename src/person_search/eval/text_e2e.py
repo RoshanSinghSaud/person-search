@@ -26,8 +26,8 @@ Metrics per query:
 * ``Hit@k (pure)`` - stricter: some track in the top k has purity > 0.5.
 * ``first_hit`` - rank of the first such track (1-based; None if not in the
   ranking), giving the mean reciprocal rank.
-* ``frame_recall@1`` - target frames of the top-ranked track (sampled frames
-  where it is on the target) / ground-truth frames of the case.
+* ``frame_recall@1`` - ground-truth frames (TP + FN) in which the top-ranked
+  track is on the target, over all ground-truth frames of the case.
 """
 
 from __future__ import annotations
@@ -140,7 +140,7 @@ class QueryResult:
     level: str
     method: str
     ranked: list[RankedEvidence]
-    gt_frames: int
+    ground_truth: frozenset[int]  # sampled frames where the target is (labels' TP + FN)
     extra: dict[str, Any] = field(default_factory=dict)
 
     def first_hit(self, rule: str = "evidence") -> int | None:
@@ -152,9 +152,9 @@ class QueryResult:
 
     @property
     def frame_recall_at1(self) -> float:
-        if not self.ranked or not self.gt_frames:
+        if not self.ranked or not self.ground_truth:
             return 0.0
-        return len(self.ranked[0].target_samples) / self.gt_frames
+        return len(self.ranked[0].target_samples & self.ground_truth) / len(self.ground_truth)
 
     def as_dict(self, top: int = 5) -> dict[str, Any]:
         return {

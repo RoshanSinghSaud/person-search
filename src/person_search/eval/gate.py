@@ -95,7 +95,7 @@ def text_metrics(
         ]
         ranked = rank_with_evidence(obs, scores, targets[q.case])
         results.append(
-            QueryResult(q.id, q.case, q.level, "text", ranked, len(labels[q.case].ground_truth))
+            QueryResult(q.id, q.case, q.level, "text", ranked, labels[q.case].ground_truth)
         )
     s = summarize(results)
     return {

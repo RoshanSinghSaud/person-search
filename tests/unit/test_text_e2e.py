@@ -64,13 +64,21 @@ def test_ranking_matches_the_papers_track_score():
 def test_query_result_metrics():
     obs = [_obs("A", 0), _obs("B", 0), _obs("C", 0)]
     ranked = rank_with_evidence(obs, [0.2, 0.9, 0.5], {"A": [(0, 0)]})  # order B, C, A
-    r = QueryResult("q", "case", "short", "text", ranked, gt_frames=4)
+    r = QueryResult("q", "case", "short", "text", ranked, frozenset({0, 1, 2, 3}))
     assert r.first_hit() == 3 and not r.hit_at(1) and r.hit_at(5)
     assert r.frame_recall_at1 == 0.0
     hit_first = QueryResult(
-        "q2", "case", "short", "text", rank_with_evidence(obs, [0.9, 0.2, 0.5], {"A": [(0, 0)]}), 4
+        "q2",
+        "case",
+        "short",
+        "text",
+        rank_with_evidence(obs, [0.9, 0.2, 0.5], {"A": [(0, 0)]}),
+        frozenset({0, 1, 2, 3}),
     )
     assert hit_first.frame_recall_at1 == 0.25
+    # target frames outside the ground truth do not count (labels can end early)
+    late = QueryResult("q3", "c", "short", "text", hit_first.ranked, frozenset({5, 6}))
+    assert late.frame_recall_at1 == 0.0
     s = summarize([r, hit_first])
     assert (s.n, s.hit1, s.hit5) == (2, 1, 2)
     assert s.mrr == pytest.approx((1 / 3 + 1) / 2)
