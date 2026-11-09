@@ -247,5 +247,6 @@ The research system is the team's final-year project and paper:
 
 Third-party code and licenses (YOLO11 AGPL-3.0, DeepSORT GPL-3.0, torchreid
 MIT, CLIP MIT) are listed in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
-The campus and college datasets are private and are not in this repository;
-demo footage needs the participants' consent (see the roadmap's privacy notes).
+The campus and college datasets are private and are not in this repository.
+
+
