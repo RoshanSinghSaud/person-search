@@ -11,7 +11,7 @@
 #   detailed - a careful report (6+ attributes)
 #
 # All descriptions fit in IRRA's 77-token context with the 8 prompt tokens
-# (AUDIT.md F15); tests/unit/test_text_queries.py checks the format.
+# (AUDIT.md F15); tests/unit/test_text_e2e.py checks the format.
 
 written_at: "2026-11-09T05:04:24Z"
 written_by: "Claude (assistant), from query.jpg only; no video frames or search results seen"

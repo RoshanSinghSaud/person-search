@@ -39,6 +39,9 @@ for each, the tracks that count as a correct answer. Two traps:
 - Metrics: Hit@1, Hit@5, MRR and frame recall of the top track
   (`eval/text_e2e.py`).
 
+Timeline (UTC, 2026-11-09, from the commits and the run logs): descriptions
+committed 05:04, target segments 05:12, first text search 05:25.
+
 ## Consequences
 
 - 12 queries is a small test set: one query is 8 points of Hit@1. Report counts
