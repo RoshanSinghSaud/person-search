@@ -43,13 +43,30 @@ class InMemoryIndex:
             hits = [h for h in hits if h.score >= score_threshold]
         return hits
 
-    def fetch_tracks(self, keys: Iterable[TrackKey], *, with_vectors: bool = True) -> list[Point]:
+    def fetch_tracks(
+        self,
+        keys: Iterable[TrackKey],
+        *,
+        with_vectors: bool = True,
+        vectors: Sequence[str] | None = None,
+        embedded_only: bool = False,
+    ) -> list[Point]:
         wanted = set(keys)
-        return [
-            p if with_vectors else Point(p.id, p.payload)
-            for p in self._points.values()
-            if (p.payload["video_id"], p.payload["track_id"]) in wanted
-        ]
+        out = []
+        for p in self._points.values():
+            if (p.payload["video_id"], p.payload["track_id"]) not in wanted:
+                continue
+            if embedded_only and not p.payload.get("embedded"):
+                continue
+            if not with_vectors:
+                out.append(Point(p.id, p.payload))
+            elif vectors:
+                out.append(
+                    Point(p.id, p.payload, {k: v for k, v in p.vectors.items() if k in vectors})
+                )
+            else:
+                out.append(p)
+        return out
 
     def count(self, flt: SearchFilter | None = None) -> int:
         return sum(1 for p in self._points.values() if flt is None or flt.matches(p.payload))

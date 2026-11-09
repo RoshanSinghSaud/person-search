@@ -31,12 +31,17 @@ runs check this on the 4 test cases):
 Results are grouped per video: the paper's dynamic threshold is defined for one
 query against one video, so a photo query over several videos applies it to
 each video separately.
+
+Photo queries fetch every point of a candidate track (frame selection
+forward-fills over frames without vectors) but only the ``osnet`` vector; text
+and hybrid queries fetch only the points that carry vectors, and only the
+vectors they score.
 """
 
 from __future__ import annotations
 
 import time
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
 
 import numpy as np
@@ -55,6 +60,8 @@ FLOAT_MARGIN = 1e-4
 
 @dataclass(frozen=True, slots=True)
 class RankedTrack:
+    """A text/hybrid result. ``n_frames`` counts the track's scored (embedded) frames."""
+
     video_id: str
     track_id: str
     score: float
@@ -119,8 +126,14 @@ class IndexedSearch:
         self.max_limit = max_limit
 
     # ---------------------------------------------------------------- helpers
-    def _fetch(self, keys: set[TrackKey], stats: SearchStats) -> dict[str, list[Observation]]:
-        points = self.index.fetch_tracks(keys)
+    def _fetch(
+        self,
+        keys: set[TrackKey],
+        stats: SearchStats,
+        vectors: Sequence[str],
+        embedded_only: bool = False,
+    ) -> dict[str, list[Observation]]:
+        points = self.index.fetch_tracks(keys, vectors=vectors, embedded_only=embedded_only)
         stats.candidate_tracks = len(keys)
         stats.fetched_points = len(points)
         return observations_by_video(points)
@@ -142,7 +155,7 @@ class IndexedSearch:
         context = self.index.search(OSNET, q, limit=self.context_tracks, flt=flt)
         stats.retrieved_points = len(above) + len(context)
         clock.lap("retrieve")
-        by_video = self._fetch(_keys(above) | _keys(context), stats)
+        by_video = self._fetch(_keys(above) | _keys(context), stats, [OSNET])
         clock.lap("fetch")
         per_video = {
             vid: photo_search(obs, q, self.scoring, OSNET) for vid, obs in by_video.items()
@@ -163,7 +176,7 @@ class IndexedSearch:
             stats.rounds += 1
             hits = self.index.search(IRRA, q, limit=limit, flt=flt)
             clock.lap("retrieve")
-            by_video = self._fetch(_keys(hits), stats)
+            by_video = self._fetch(_keys(hits), stats, [IRRA], embedded_only=True)
             clock.lap("fetch")
             ranked = self._rank({vid: similarities(obs, q, IRRA) for vid, obs in by_video.items()})
             clock.lap("score")
@@ -209,7 +222,7 @@ class IndexedSearch:
             hp = self.index.search(OSNET, p, limit=limit, flt=flt)
             ht = self.index.search(IRRA, t, limit=limit, flt=flt)
             clock.lap("retrieve")
-            by_video = self._fetch(_keys(hp) | _keys(ht), stats)
+            by_video = self._fetch(_keys(hp) | _keys(ht), stats, [OSNET, IRRA], embedded_only=True)
             clock.lap("fetch")
             per_video: dict[str, dict[str, list[FrameSim]]] = {}
             for vid, obs in by_video.items():

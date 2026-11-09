@@ -10,12 +10,18 @@
 * The collection name carries the encoder versions
   (``detections__osnet-v1__irra-v1``), so an index can never be searched with
   encoders it was not built with.
-* In local mode Qdrant evaluates payload filters in Python, point by point, so
-  fetching a track by filter scans the whole collection. With ``track_cache``
-  (default in local mode) the index keeps a ``(video, track) -> point IDs`` map
-  in memory, built with one scan on first use and updated on every upsert, and
-  fetches tracks by ID. That assumes this process is the only writer, which is
-  what local mode allows anyway (it locks its folder).
+* In local mode Qdrant evaluates payload filters in Python, point by point
+  (~250 ms for 16k points, against ~10 ms to score them all). So in local mode:
+
+  - ``search`` ranks without a filter and keeps the hits that match it, looking
+    deeper until it has ``limit`` matches or has seen every point: the same
+    result as a filtered search, an order of magnitude faster;
+  - ``fetch_tracks`` uses a ``(video, track) -> point IDs`` map kept in memory
+    (built with one scan on first use, updated on every upsert) and retrieves by
+    ID. That assumes this process is the only writer, which local mode enforces
+    anyway (it locks its folder).
+
+  Against a Qdrant server both are switched off: filters run on payload indexes.
 """
 
 from __future__ import annotations
@@ -78,7 +84,9 @@ class QdrantIndex:
         self.collection = collection_name(self.model_versions)
         self.batch_size = batch_size
         self.track_cache = local if track_cache is None else track_cache
-        self._tracks: dict[TrackKey, set[str]] | None = None
+        self.postfilter = local
+        # (video, track) -> (all point IDs, IDs of points that carry vectors)
+        self._tracks: dict[TrackKey, tuple[set[str], set[str]]] | None = None
         if not client.collection_exists(self.collection):
             if not create:
                 existing = [c.name for c in client.get_collections().collections]
@@ -143,8 +151,7 @@ class QdrantIndex:
             )
         if self._tracks is not None:
             for p in points:
-                key = (p.payload["video_id"], str(p.payload["track_id"]))
-                self._tracks.setdefault(key, set()).add(p.id)
+                self._remember(self._tracks, p)
 
     # ------------------------------------------------------------------- reads
     def search(
@@ -156,18 +163,38 @@ class QdrantIndex:
         score_threshold: float | None = None,
         flt: SearchFilter | None = None,
     ) -> list[Hit]:
-        res = self.client.query_points(
-            self.collection,
-            query=np.asarray(query, dtype=np.float32).ravel().tolist(),
-            using=vector,
-            limit=limit,
-            score_threshold=score_threshold,
-            query_filter=_to_filter(flt),
-            with_payload=True,
-        )
-        return [Hit(str(p.id), float(p.score), dict(p.payload or {})) for p in res.points]
+        q = np.asarray(query, dtype=np.float32).ravel().tolist()
+        if flt is None or not self.postfilter:
+            res = self.client.query_points(
+                self.collection,
+                query=q,
+                using=vector,
+                limit=limit,
+                score_threshold=score_threshold,
+                query_filter=_to_filter(flt),
+                with_payload=True,
+            )
+            return [Hit(str(p.id), float(p.score), dict(p.payload or {})) for p in res.points]
+        depth = max(4 * limit, 256)
+        while True:
+            res = self.client.query_points(
+                self.collection,
+                query=q,
+                using=vector,
+                limit=depth,
+                score_threshold=score_threshold,
+                with_payload=True,
+            )
+            hits = [
+                Hit(str(p.id), float(p.score), dict(p.payload or {}))
+                for p in res.points
+                if flt.matches(p.payload or {})
+            ]
+            if len(hits) >= limit or len(res.points) < depth:
+                return hits[:limit]
+            depth *= 4
 
-    def _scroll(self, flt: qm.Filter | None, with_vectors: bool) -> list[Point]:
+    def _scroll(self, flt: qm.Filter | None, with_vectors: bool | list[str]) -> list[Point]:
         out: list[Point] = []
         offset = None
         while True:
@@ -191,21 +218,39 @@ class QdrantIndex:
             if offset is None:
                 return out
 
-    def _track_map(self) -> dict[TrackKey, set[str]]:
+    @staticmethod
+    def _remember(tracks: dict[TrackKey, tuple[set[str], set[str]]], p: Point) -> None:
+        key = (p.payload["video_id"], str(p.payload["track_id"]))
+        all_ids, embedded = tracks.setdefault(key, (set(), set()))
+        all_ids.add(p.id)
+        if p.payload.get("embedded"):
+            embedded.add(p.id)
+
+    def _track_map(self) -> dict[TrackKey, tuple[set[str], set[str]]]:
         if self._tracks is None:
-            tracks: dict[TrackKey, set[str]] = {}
+            tracks: dict[TrackKey, tuple[set[str], set[str]]] = {}
             for p in self._scroll(None, with_vectors=False):
-                key = (p.payload["video_id"], str(p.payload["track_id"]))
-                tracks.setdefault(key, set()).add(p.id)
+                self._remember(tracks, p)
             self._tracks = tracks
         return self._tracks
 
-    def fetch_tracks(self, keys: Iterable[TrackKey], *, with_vectors: bool = True) -> list[Point]:
+    def fetch_tracks(
+        self,
+        keys: Iterable[TrackKey],
+        *,
+        with_vectors: bool = True,
+        vectors: Sequence[str] | None = None,
+        embedded_only: bool = False,
+    ) -> list[Point]:
+        want: bool | list[str] = list(vectors) if (with_vectors and vectors) else with_vectors
         if self.track_cache:
             track_map = self._track_map()
-            ids = sorted({i for k in keys for i in track_map.get(k, ())})
+            empty: tuple[set[str], set[str]] = (set(), set())
+            ids = sorted(
+                {i for k in keys for i in track_map.get(k, empty)[1 if embedded_only else 0]}
+            )
             records = self.client.retrieve(
-                self.collection, ids=ids, with_payload=True, with_vectors=with_vectors
+                self.collection, ids=ids, with_payload=True, with_vectors=want
             )
             return [
                 Point(
@@ -222,13 +267,13 @@ class QdrantIndex:
             by_video.setdefault(video_id, set()).add(track_id)
         out: list[Point] = []
         for video_id, tracks in by_video.items():
-            flt = qm.Filter(
-                must=[
-                    qm.FieldCondition(key="video_id", match=qm.MatchValue(value=video_id)),
-                    qm.FieldCondition(key="track_id", match=qm.MatchAny(any=sorted(tracks))),
-                ]
-            )
-            out.extend(self._scroll(flt, with_vectors))
+            must: list[qm.Condition] = [
+                qm.FieldCondition(key="video_id", match=qm.MatchValue(value=video_id)),
+                qm.FieldCondition(key="track_id", match=qm.MatchAny(any=sorted(tracks))),
+            ]
+            if embedded_only:
+                must.append(qm.FieldCondition(key="embedded", match=qm.MatchValue(value=True)))
+            out.extend(self._scroll(qm.Filter(must=must), want))
         return out
 
     def count(self, flt: SearchFilter | None = None) -> int:

@@ -93,8 +93,19 @@ class VectorIndex(Protocol):
         """Points with the highest dot product on ``vector``, best first."""
         ...
 
-    def fetch_tracks(self, keys: Iterable[TrackKey], *, with_vectors: bool = True) -> list[Point]:
-        """Every point of the given tracks (embedded or not)."""
+    def fetch_tracks(
+        self,
+        keys: Iterable[TrackKey],
+        *,
+        with_vectors: bool = True,
+        vectors: Sequence[str] | None = None,
+        embedded_only: bool = False,
+    ) -> list[Point]:
+        """Every point of the given tracks.
+
+        ``vectors`` limits which named vectors are returned; ``embedded_only``
+        skips the points without vectors (text and hybrid scoring never read them).
+        """
         ...
 
     def count(self, flt: SearchFilter | None = None) -> int: ...

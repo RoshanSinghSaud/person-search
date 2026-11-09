@@ -231,3 +231,33 @@ def test_qdrant_track_cache_and_filter_scan_fetch_the_same_points():
     b = {p.id: p for p in scan.fetch_tracks(keys)}
     assert a.keys() == b.keys() and a
     assert all(np.array_equal(a[i].vectors.get(OSNET, 0), b[i].vectors.get(OSNET, 0)) for i in a)
+
+
+@pytest.mark.parametrize("limit", [1, 7, 300])
+@pytest.mark.parametrize("threshold", [None, 0.2])
+def test_local_postfilter_search_equals_qdrant_filtered_search(limit, threshold):
+    from qdrant_client import QdrantClient
+
+    a, ca = make_ingest(60, path="a.mp4")
+    b, _ = make_ingest(61, path="b.mp4")
+    client = QdrantClient(":memory:")
+    post = QdrantIndex(client, VERSIONS, DIMS, local=True)
+    native = QdrantIndex(client, VERSIONS, DIMS, local=True)
+    native.postfilter = False  # Qdrant's own (slow in local mode) filter evaluation
+    post.upsert(points_from_ingest(a, "va", camera="gate"))
+    post.upsert(points_from_ingest(b, "vb", camera="library"))
+    for flt in (SearchFilter(video_ids=("va",)), SearchFilter(cameras=("library",), t_min=1.0)):
+        for q in (ca[OSNET][0], -ca[OSNET][0]):
+            got = post.search(OSNET, q, limit=limit, score_threshold=threshold, flt=flt)
+            ref = native.search(OSNET, q, limit=limit, score_threshold=threshold, flt=flt)
+            assert [h.id for h in got] == [h.id for h in ref]
+
+
+def test_fetch_tracks_can_skip_vectorless_points_and_unneeded_vectors(index):
+    ingest, _ = make_ingest(70)
+    index.upsert(points_from_ingest(ingest, "v"))
+    allp = index.fetch_tracks([("v", "3")])
+    emb = index.fetch_tracks([("v", "3")], vectors=[IRRA], embedded_only=True)
+    assert {p.id for p in emb} == {p.id for p in allp if p.payload["embedded"]}
+    assert emb and all(set(p.vectors) == {IRRA} for p in emb)
+    assert all(not p.vectors for p in index.fetch_tracks([("v", "3")], with_vectors=False))
