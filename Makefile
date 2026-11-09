@@ -25,8 +25,8 @@ help: ## list targets
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-14s\033[0m %s\n", $$1, $$2}'
 
 .PHONY: setup
-setup: ## create the env (CPU torch) with dev tools, install pre-commit hooks
-	uv sync --group dev
+setup: ## create the env (CPU torch) with dev + eval tools, install pre-commit hooks
+	uv sync --group dev --group eval
 	@$(MAKE) --no-print-directory fix-pth
 	uv run --no-sync python -c "import person_search; print('person_search importable from', person_search.__file__)"
 	uv run --no-sync pre-commit install

@@ -37,6 +37,7 @@ dependencies = [
     "pydantic-settings>=2.3,<3",
     "pyyaml>=6.0",
     "huggingface-hub>=0.23",
+    "qdrant-client>=1.10",               # the vector index (local mode needs no server)
 ]
 
 [project.scripts]
@@ -48,12 +49,11 @@ serve = [
     "fastapi>=0.111",
     "uvicorn[standard]>=0.30",
     "python-multipart>=0.0.9",
-    "qdrant-client>=1.10",
     "redis>=5.0",
     "rq>=1.16",
     "prometheus-client>=0.20",
 ]
-# Evaluation, experiment tracking, gate set access (Week 2 / Day 24).
+# Evaluation, experiment tracking, gate set access (Week 2 / Day 24): make eval-models, make register.
 eval = [
     "mlflow>=2.14",
     "pandas>=2.2",
