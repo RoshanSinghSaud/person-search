@@ -59,7 +59,7 @@ eval = [
     "pandas>=2.2",
     "matplotlib>=3.8",
     "onnx>=1.16",
-    "onnxruntime>=1.18",
+    "onnxruntime>=1.18,<1.24",           # 1.24 dropped Python 3.10 wheels
 ]
 dev = [
     "pytest>=8.2",
@@ -114,6 +114,7 @@ ignore = [
 "tests/**" = ["PLR0915", "N802", "N806"]
 "src/person_search/eval/reid.py" = ["N815"]   # mAP is the field's own spelling
 "tools/legacy/**" = ["PLR0915", "PLR0912", "PLW0603"]
+"scripts/**" = ["PLR0915", "PLR0912"]          # linear run scripts: one long main() reads best
 
 [tool.ruff.lint.isort]
 known-first-party = ["person_search"]
