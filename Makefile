@@ -4,6 +4,12 @@ SHELL := /bin/bash
 
 LEGACY_DIR ?= ../legacy
 CASES_DIR  ?= $(LEGACY_DIR)/amrit-pbvs
+CASES      := test_case_001 test_case_002 test_case_003 test_case_004
+INGEST_DIR ?= $(LEGACY_DIR)/runs/ingest_v1
+WEEK2_DIR  ?= $(LEGACY_DIR)/runs/week2
+INDEX_DIR  ?= $(WEEK2_DIR)/index
+GATE_DIR   ?= $(LEGACY_DIR)/gate_set
+CAMPUS_DIR ?= ../custom_reid_dataset
 # e.g. linux-x86_64, darwin-arm64 (same tag as the tests compute from Python)
 PLATFORM   := $(shell uname -s | tr '[:upper:]' '[:lower:]')-$(shell uname -m)
 
@@ -86,6 +92,53 @@ fingerprint: ## compare decode / YOLO / OSNet outputs on this machine with the l
 .PHONY: eval-frames
 eval-frames: ## frame-level metrics from the committed evaluation.json labels (89.05% F1)
 	uv run person-search eval-frames --cases-dir tests/golden/data/labels
+
+# ---------------------------------------------------------------- Week 2
+.PHONY: ingest-cases
+ingest-cases: ## ingest the 4 test videos with OSNet + IRRA vectors (~25 min on 2 CPUs)
+	@mkdir -p $(INGEST_DIR)
+	for c in $(CASES); do \
+		uv run person-search --log-level WARNING ingest --video $(CASES_DIR)/$$c/test_video.mp4 \
+			--out $(INGEST_DIR)/$$c.npz --encoders osnet irra > $(INGEST_DIR)/$$c.json || exit 1; \
+	done
+
+.PHONY: index
+index: ## Day 10: write the ingested cases into the local Qdrant index (re-run adds 0 points)
+	$(PY) scripts/build_index.py --ingest-dir $(INGEST_DIR) --cases-dir $(CASES_DIR) \
+		--index $(INDEX_DIR) --out $(WEEK2_DIR)/index.json
+
+.PHONY: clipreid-queries
+clipreid-queries: ## Day 12: repo 1's CLIP-ReID embedding of each query photo (for its hybrid)
+	$(PY) tools/legacy/clipreid_query_embeddings.py --repo1 $(LEGACY_DIR)/person-reid-clip \
+		--cases-dir $(CASES_DIR) --ckpt models/clipreid_image_legacy.pth \
+		--out $(WEEK2_DIR)/clipreid_query_embeddings.npz
+
+.PHONY: eval-search
+eval-search: ## Days 11-12: indexed photo, text and hybrid search on the 4 cases
+	$(PY) scripts/eval_search.py --ingest-dir $(INGEST_DIR) --cases-dir $(CASES_DIR) \
+		--index $(INDEX_DIR) --clipreid $(WEEK2_DIR)/clipreid_query_embeddings.npz --out-dir $(WEEK2_DIR)
+
+.PHONY: gate-set
+gate-set: ## Day 8: build the gate set (campus split, cached crops, text set) in ../legacy/gate_set
+	$(PY) scripts/gate_set.py build --ingest-dir $(INGEST_DIR) --cases-dir $(CASES_DIR) \
+		--campus $(CAMPUS_DIR) --out $(GATE_DIR)
+
+.PHONY: eval-models
+eval-models: ## Day 8: score osnet v0/v1 and irra v0/v1 on the gate set (~40 min on 2 CPUs)
+	$(PY) scripts/eval_models.py evaluate --gate-dir $(GATE_DIR) --out $(WEEK2_DIR)/model_eval.json
+
+.PHONY: register
+register: ## Day 8: record the scored versions in MLflow (MLFLOW_TRACKING_URI, else local SQLite)
+	$(PY) scripts/eval_models.py register --results $(WEEK2_DIR)/model_eval.json
+
+.PHONY: profile
+profile: ## Day 13: time per ingest stage on test case 2, batched vs one crop per pass
+	$(PY) scripts/profile_ingest.py --cases-dir $(CASES_DIR) --case test_case_002 \
+		--out $(WEEK2_DIR)/profile_case2_batched.json
+	$(PY) scripts/profile_ingest.py --cases-dir $(CASES_DIR) --case test_case_002 --max-samples 240 \
+		--batch-size 1 --out $(WEEK2_DIR)/profile_case2_b1_240.json
+	$(PY) scripts/profile_ingest.py --cases-dir $(CASES_DIR) --case test_case_002 --max-samples 240 \
+		--out $(WEEK2_DIR)/profile_case2_batched_240.json
 
 .PHONY: clean
 clean: ## remove caches and outputs

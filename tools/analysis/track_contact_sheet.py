@@ -8,9 +8,11 @@ spread over the track's life and the track's frame span.
 
 Usage::
 
-    python tools/analysis/track_contact_sheet.py --ingest ../legacy/runs/ingest_v1/test_case_001.npz \
+    python tools/analysis/track_contact_sheet.py \
+        --ingest ../legacy/runs/ingest_v1/test_case_001.npz \
         --video ../legacy/amrit-pbvs/test_case_001/test_video.mp4 \
-        --query ../legacy/amrit-pbvs/test_case_001/query.jpg --out ../legacy/runs/text_targets/test_case_001
+        --query ../legacy/amrit-pbvs/test_case_001/query.jpg \
+        --out ../legacy/runs/text_targets/test_case_001
 
 The sheets show people from the test videos: keep them out of the repo.
 """
@@ -74,20 +76,37 @@ def main() -> int:
         sheet = np.full((max(len(page) * CELL_H, CELL_H * 2 + 30), sheet_w, 3), 255, np.uint8)
         q = _fit(query, CELL_H * 2, CELL_W * 2)
         sheet[: CELL_H * 2, -CELL_W * 2 :] = q
-        cv2.putText(sheet, "QUERY", (sheet_w - CELL_W * 2 + 5, CELL_H * 2 + 20),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 255), 2)
+        cv2.putText(
+            sheet,
+            "QUERY",
+            (sheet_w - CELL_W * 2 + 5, CELL_H * 2 + 20),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.6,
+            (0, 0, 255),
+            2,
+        )
         for r, tid in enumerate(page):
             obs = tracks[tid]
             y = r * CELL_H
-            cv2.putText(sheet, f"track {tid}", (5, y + 40), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 0), 2)
+            cv2.putText(
+                sheet, f"track {tid}", (5, y + 40), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 0), 2
+            )
             span = f"s{obs[0].sample_index}-{obs[-1].sample_index}"
             cv2.putText(sheet, span, (5, y + 75), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (60, 60, 60), 1)
-            cv2.putText(sheet, f"n={len(obs)}", (5, y + 100), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (60, 60, 60), 1)
+            cv2.putText(
+                sheet, f"n={len(obs)}", (5, y + 100), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (60, 60, 60), 1
+            )
             for k in range(PER_ROW):
                 if (tid, k) in crops:
                     x = label_w + k * CELL_W
                     sheet[y : y + CELL_H, x : x + CELL_W] = _fit(crops[(tid, k)])
-            cv2.line(sheet, (0, y + CELL_H - 1), (label_w + PER_ROW * CELL_W, y + CELL_H - 1), (200, 200, 200), 1)
+            cv2.line(
+                sheet,
+                (0, y + CELL_H - 1),
+                (label_w + PER_ROW * CELL_W, y + CELL_H - 1),
+                (200, 200, 200),
+                1,
+            )
         path = args.out.with_name(f"{args.out.name}_p{p}.jpg")
         cv2.imwrite(str(path), sheet, [cv2.IMWRITE_JPEG_QUALITY, 90])
         print(path)
