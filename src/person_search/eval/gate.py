@@ -38,7 +38,7 @@ from person_search.interfaces import ImageEncoder
 from person_search.models.irra_encoder import IRRAEncoder
 from person_search.pipeline import read_query_image
 from person_search.search import photo_search
-from person_search.types import IRRA, OSNET
+from person_search.types import IRRA, OSNET, Observation
 
 
 def campus_metrics(
@@ -57,10 +57,12 @@ def photo_metrics(
     labels: Mapping[str, FrameLabels],
     query_dir: Path,
     scoring: ScoringSettings,
+    embedded: Mapping[str, list[Observation]] | None = None,
 ) -> dict[str, Any]:
+    """``embedded`` (per case) skips re-embedding; see ``CachedCase.from_ingest``."""
     per_case, selections = {}, {}
     for name, case in cases.items():
-        obs = case.embed({OSNET: encoder})
+        obs = embedded[name] if embedded else case.embed({OSNET: encoder})
         q = encoder.encode_images([read_query_image(query_dir / name / "query.jpg")])[0]
         res = photo_search(obs, q, scoring, OSNET)
         per_case[name] = metrics_for_selection(res.selected_samples, labels[name])
@@ -84,8 +86,10 @@ def text_metrics(
     queries: Sequence[TextQuery],
     targets: Mapping[str, Segments],
     labels: Mapping[str, FrameLabels],
+    embedded: Mapping[str, list[Observation]] | None = None,
 ) -> dict[str, Any]:
-    embedded = {name: case.embed({IRRA: encoder}) for name, case in cases.items()}
+    if embedded is None:
+        embedded = {name: case.embed({IRRA: encoder}) for name, case in cases.items()}
     tvecs = encoder.encode_texts([q.text for q in queries])
     results = []
     for q, t in zip(queries, tvecs, strict=True):

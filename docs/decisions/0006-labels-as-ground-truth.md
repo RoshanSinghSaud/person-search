@@ -30,4 +30,5 @@ going to happen.
 - If a label turns out to be wrong, fix it in a separate commit with a note
   listing the changed frames, and re-run every reported number. Do not fix
   labels silently.
-- Day 9's text targets come from the golden track IDs, not from these labels.
+- Day 9's text targets were labelled from the crops instead (decision 0007):
+  the golden track IDs include two tracks of the wrong person.

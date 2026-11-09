@@ -59,8 +59,7 @@ def main() -> int:
         for q, t in zip(queries, tvecs, strict=True):
             obs = ingests[q.case].observations
             scores = [
-                float(np.dot(t, o.embeddings[IRRA])) if IRRA in o.embeddings else None
-                for o in obs
+                float(np.dot(t, o.embeddings[IRRA])) if IRRA in o.embeddings else None for o in obs
             ]
             ranked = rank_with_evidence(obs, scores, shifted[q.case])
             results.append(

@@ -7,7 +7,8 @@ tracking: those stages are frozen in a cached case. A cached case holds
   paper's frame selection (which forward-fills over un-embedded frames) runs
   exactly as in the pipeline;
 * a PNG crop for every embedded observation (lossless, so re-embedding gives
-  the ingest's vectors bit for bit);
+  the ingest's vectors bit for bit when PyTorch uses the same number of threads
+  as the ingest did; other thread counts differ by ~1e-7, AUDIT.md F25);
 * the video's metadata and the ingest's encoder versions.
 
 Crops are re-embedded one sampled frame per batch, as the ingest does, which
@@ -44,6 +45,48 @@ class CachedCase:
     embed_rows: np.ndarray  # indices into observations that have a crop
     crops: list[np.ndarray]  # BGR, aligned with embed_rows
     meta: dict[str, Any]
+
+    def from_ingest(self, ingest: IngestResult, name: str) -> list[Observation]:
+        """Observations carrying ``name`` vectors taken from the ingest this case was cut from.
+
+        Only valid when the ingest's encoder is the one being scored; use
+        :meth:`spot_check` to prove the vectors are what :meth:`embed` would give.
+        """
+        if [(o.track_id, o.frame_index) for o in ingest.observations] != [
+            (o.track_id, o.frame_index) for o in self.observations
+        ]:
+            raise ValueError(f"{self.case}: the ingest does not match the cached observations")
+        obs = [
+            Observation(o.track_id, o.frame_index, o.sample_index, o.bbox)
+            for o in self.observations
+        ]
+        for o, src in zip(obs, ingest.observations, strict=True):
+            if name in src.embeddings:
+                o.embeddings[name] = src.embeddings[name]
+        return obs
+
+    def spot_check(
+        self, ingest: IngestResult, name: str, encoder: ImageEncoder, n_frames: int = 8
+    ) -> int:
+        """Re-embed the crops of ``n_frames`` sampled frames and require bit-identical
+        vectors to the ingest's. Returns the number of crops checked."""
+        groups: dict[int, list[int]] = {}
+        for k, row in enumerate(self.embed_rows.tolist()):
+            groups.setdefault(self.observations[row].sample_index, []).append(k)
+        keys = sorted(groups)
+        picks = [
+            keys[i] for i in np.linspace(0, len(keys) - 1, min(n_frames, len(keys))).astype(int)
+        ]
+        checked = 0
+        for s in picks:
+            ks = groups[s]
+            vecs = encoder.encode_images([self.crops[k] for k in ks])
+            for k, v in zip(ks, vecs, strict=True):
+                ref = ingest.observations[int(self.embed_rows[k])].embeddings[name]
+                if not np.array_equal(v, ref):
+                    raise AssertionError(f"{self.case}: crop {k} differs from the ingest vector")
+                checked += 1
+        return checked
 
     def embed(self, encoders: Mapping[str, ImageEncoder]) -> list[Observation]:
         """Fresh observations carrying the given encoders' vectors."""

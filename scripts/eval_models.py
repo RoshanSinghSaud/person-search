@@ -44,20 +44,51 @@ from person_search.config import load_settings
 from person_search.eval.campus import load_market_split
 from person_search.eval.frame_metrics import FrameLabels
 from person_search.eval.gate import campus_metrics, photo_metrics, text_metrics
-from person_search.eval.gate_set import load_case
+from person_search.eval.gate_set import CachedCase, load_case
 from person_search.eval.text_e2e import load_targets, load_text_queries
+from person_search.factory import configure_torch
+from person_search.ingest.pipeline import IngestResult
 from person_search.models.irra_encoder import IRRAEncoder
 from person_search.models.osnet_encoder import OSNetEncoder
+from person_search.types import Observation
 
 CASES = ("test_case_001", "test_case_002", "test_case_003", "test_case_004")
 REPO = Path(__file__).resolve().parents[1]
 FAMILY_MODEL = {"osnet": "person-search-osnet", "irra": "person-search-irra"}
 
 
+def reuse_ingest(
+    args: argparse.Namespace,
+    version: str,
+    name: str,
+    enc: Any,
+    cases: dict[str, CachedCase],
+    details: dict[str, Any],
+) -> dict[str, list[Observation]] | None:
+    """Take the vectors from the ingest when it was made by this very version.
+
+    The cached crops would give bit-identical vectors (they were cut from that
+    ingest); a sample of frames per case is re-embedded to prove it. Saves
+    re-embedding ~5,500 crops on a CPU. The CI gate always re-embeds.
+    """
+    if args.reuse_ingest is None:
+        return None
+    ingests = {c: IngestResult.load(args.reuse_ingest / f"{c}.npz") for c in cases}
+    if any(r.encoder_versions.get(name) != version for r in ingests.values()):
+        return None
+    checked = sum(case.spot_check(ingests[c], name, enc) for c, case in cases.items())
+    details["vectors"] = (
+        f"from the ingest in {args.reuse_ingest.name}; {checked} re-embedded crops "
+        "bit-identical to it"
+    )
+    return {c: case.from_ingest(ingests[c], name) for c, case in cases.items()}
+
+
 def evaluate(args: argparse.Namespace) -> int:
     cfg = yaml.safe_load(args.config.read_text())
     versions = args.versions or list(cfg["models"])
     settings = load_settings()
+    configure_torch(settings)  # PS_TORCH_THREADS: thread count changes vectors in the last bit
     gate = args.gate_dir
     split = load_market_split(gate / "campus")
     cases = {c: load_case(gate / "cases" / f"{c}.npz") for c in args.cases}
@@ -81,16 +112,19 @@ def evaluate(args: argparse.Namespace) -> int:
         t0 = time.perf_counter()
         metrics: dict[str, Any] = {}
         details: dict[str, Any] = {}
+        reuse = None
         if spec["family"] == "osnet":
             enc = OSNetEncoder(path, version=version)
+            reuse = reuse_ingest(args, version, "osnet", enc, cases, details)
             metrics |= campus_metrics(enc, split, ("cosine", "euclidean_raw"))
-            pm = photo_metrics(enc, cases, labels, gate / "cases", settings.scoring)
+            pm = photo_metrics(enc, cases, labels, gate / "cases", settings.scoring, reuse)
             details["photo"] = {k: pm.pop(k) for k in ("per_case", "selected_samples")}
             metrics |= pm
         else:
             enc = IRRAEncoder(path, version=version)
+            reuse = reuse_ingest(args, version, "irra", enc, cases, details)
             metrics |= campus_metrics(enc, split, ("cosine",))
-            tm = text_metrics(enc, cases, queries, targets, labels)
+            tm = text_metrics(enc, cases, queries, targets, labels, reuse)
             details["text"] = tm.pop("per_query")
             metrics |= tm
         results["versions"][version] = {
@@ -119,7 +153,7 @@ def register(args: argparse.Namespace) -> int:
     mlflow.set_experiment(args.experiment)
     client = mlflow.MlflowClient()
     production = results["production"]
-    for version, r in results["versions"].items():
+    for version, r in sorted(results["versions"].items()):  # v0 before v1
         name = FAMILY_MODEL[r["family"]]
         with mlflow.start_run(run_name=f"gate-{version}") as run:
             mlflow.set_tags({"semver": version, "family": r["family"], "role": r["role"]})
@@ -180,6 +214,12 @@ def main() -> int:
     e.add_argument("--config", type=Path, default=REPO / "configs" / "models.yaml")
     e.add_argument("--versions", nargs="*")
     e.add_argument("--resume", action="store_true", help="skip versions already in --out")
+    e.add_argument(
+        "--reuse-ingest",
+        type=Path,
+        default=None,
+        help="ingest dir: reuse its vectors for the version that made it (spot-checked)",
+    )
     e.add_argument("--cases", nargs="+", default=list(CASES))
     e.set_defaults(func=evaluate)
     r = sub.add_parser("register")

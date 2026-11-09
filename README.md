@@ -6,11 +6,13 @@ final-year system into a production service: index once, search many.
 
 [![CI](https://github.com/RoshanSinghSaud/person-search/actions/workflows/ci.yml/badge.svg)](https://github.com/RoshanSinghSaud/person-search/actions/workflows/ci.yml)
 
-> **Status: pre-Day-1 setup and Week 1 extraction done.** Both legacy repos are
-> audited ([AUDIT.md](AUDIT.md)); detection, tracking, OSNet, IRRA, scoring and
-> evaluation are extracted into modules with parity tests against the legacy
-> code and a golden test that reproduces repo 2's selected frames on all 4 test
-> cases. Indexing (Qdrant), the API, ONNX/INT8 and deployment follow the 30-day plan.
+> **Status: Weeks 1-2 done.** Week 1 extracted both legacy repos into modules
+> with parity and golden tests ([AUDIT.md](AUDIT.md)). Week 2 added evaluation
+> for photo and text queries, a Qdrant index holding both vectors, indexed
+> photo, text and hybrid search (exactly equal to a full scan), the first
+> end-to-end text numbers and per-stage timings
+> ([docs/results/week2.md](docs/results/week2.md)). The API, ONNX/INT8 and
+> deployment follow the plan.
 
 ## How it works
 
@@ -19,7 +21,7 @@ flowchart LR
     V[video] --> S[12 fps sampler] --> D[YOLO11n] --> T[DeepSORT]
     T -->|every 3rd frame,<br/>crops batched per frame| O[OSNet 512-d]
     T --> I[IRRA image 512-d]
-    O & I --> P[(one observation per detection:<br/>video, track, frame, bbox,<br/>vectors osnet + irra)]
+    O & I --> P[(Qdrant: one point per detection<br/>video, track, frame, bbox,<br/>vectors osnet + irra)]
     Q1[photo] --> QO[OSNet] --> PS[top-50% track score<br/>+ dynamic threshold] --> R1[frame segments]
     Q2[description] --> QI[IRRA text + prompt tokens] --> TS[top-50% track score] --> R2[ranked tracks]
     Q1 & Q2 --> HY[late fusion of normalised scores] --> R3[ranked tracks]
@@ -27,7 +29,9 @@ flowchart LR
 ```
 
 Photo results are accepted automatically (the paper's rule); text and hybrid
-results are ranked for a person to review.
+results are ranked for a person to review. Every query first retrieves
+detections from the index, then rescores whole candidate tracks; the retrieval
+cut-offs are chosen so the answer always equals a full scan (decision 0008).
 
 ## Repository layout
 
@@ -41,23 +45,26 @@ src/person_search/
   ingest/            video.py (sampler) detector.py (YOLO11n) tracker.py (DeepSORT) pipeline.py
   models/            osnet.py (vendored, MIT) osnet_encoder.py irra_encoder.py checkpoint.py preprocessing.py
   core/              scoring.py (paper's scoring + threshold) fusion.py (late fusion, legacy sum)
-  search/            photo.py text.py hybrid.py results.py
-  eval/              frame_metrics.py (P/R/F1) reid.py (mAP/CMC) golden.py
-  index/ api/        Day 10 / Day 17 (planned contents in their __init__)
-configs/             report_run.yaml (default = repo 2's final code) paper.yaml (values from the paper text)
-tests/unit/          87 tests, no weights needed (CI)
+  search/            photo.py text.py hybrid.py results.py (in memory); indexed.py (over the index)
+  index/             base.py (VectorIndex) qdrant.py (local mode or server) memory.py (fake) points.py
+  eval/              frame_metrics.py reid.py golden.py text_e2e.py (Hit@k) campus.py gate_set.py gate.py
+  api/               Day 17 (planned contents in its __init__)
+configs/             report_run.yaml (default = repo 2's final code) paper.yaml models.yaml (model versions)
+scripts/             build_index eval_search gate_set eval_models profile_ingest week2_report fetch_weights
+tests/unit/          unit tests, no weights needed (CI)
 tests/parity/        new modules vs legacy code (make parity)
 tests/golden/        pipeline.run vs repo 2 on the 4 test cases (make golden)
 tools/legacy/        Day 2 harness, golden builder, drawn-box extractor (import legacy by path)
-tools/analysis/      scoring sweeps over cached ingests
-docs/decisions/      one note per decision
+tools/analysis/      scoring sweeps, track contact sheets, label sensitivity
+docs/decisions/      one note per decision (0007-0010: Week 2)
+docs/results/        week2.md, generated from the run outputs
 ```
 
 ## Quick start
 
 ```bash
 # 1. environment (Python 3.10, CPU PyTorch)
-uv sync --group dev            # or: make setup
+uv sync --group dev --group eval   # or: make setup
 # 2. legacy repos for parity/golden tests, outside this repo (never edit them)
 make legacy                    # -> ../legacy/{person-reid-clip,amrit-pbvs}
 # 3. weights -> models/ (team Drive + Hugging Face), prints SHA-256s
@@ -79,6 +86,21 @@ person-search eval-frames --cases-dir tests/golden/data/labels      # the report
 person-search config                                                # resolved settings
 ```
 
+Week 2, in order (outputs go to `../legacy/runs/`; the campus split is
+expected at `../custom_reid_dataset`):
+
+```bash
+make ingest-cases      # 4 videos, OSNet + IRRA vectors          (~25 min on 2 CPUs)
+make index             # Qdrant local mode; a re-run adds 0 points
+make clipreid-queries  # repo 1's photo embeddings, for its hybrid (comparison only)
+make eval-search       # Days 11-12: indexed photo / text / hybrid on the 4 cases
+make gate-set          # Day 8: campus split + cached crops + text set
+make eval-models       # Day 8: osnet v0/v1, irra v0/v1 on the gate set
+make register          # Day 8: MLflow registry (MLFLOW_TRACKING_URI for DagsHub)
+make profile           # Day 13: time per ingest stage
+uv run python scripts/week2_report.py   # -> docs/results/week2.md
+```
+
 Every setting can be overridden with `PS_<SECTION>__<FIELD>`, e.g.
 `PS_SCORING__BASE_THRESHOLD=0.7`. See `.env.example`.
 
@@ -98,7 +120,7 @@ Every setting can be overridden with `PS_<SECTION>__<FIELD>`, e.g.
   linked in repo 2's README by hand and place the files in `models/` under the
   names in `models/README.md`.
 
-## Results so far
+## Results
 
 ### Parity with the legacy code (`make parity`)
 
@@ -149,8 +171,51 @@ Speed (2 vCPU container, other jobs running - indicative only):
 | One photo query, repo 2 untouched, cases 1-4 | 194 s / 414 s / 448 s / 121 s |
 | Ingest, this repo, case 4, OSNet + IRRA, batched | 207 s = 1.7 frames/s; IRRA 47%, OSNet 23%, DeepSORT 16%, YOLO 13% |
 
-Indexed search (Day 11) replaces every per-query number above with a
-vector lookup.
+### Week 2 (Days 8-14): evaluate, index, search
+
+Full tables, generated from the run outputs: [docs/results/week2.md](docs/results/week2.md).
+
+**Index once, search many (Days 10-11).** Each video is ingested once into a
+Qdrant collection (one point per tracked detection, OSNet and IRRA vectors on
+every 3rd frame; 16,483 points for the 4 test videos; re-ingesting adds 0).
+Photo search over the index selects **exactly the golden frames** on all 4
+cases (system frame F1 84.70%, unchanged):
+
+| Case | Indexed photo query (p50) | Reprocessing the video (`pipeline.run`) |
+|---|---:|---:|
+| 1 | 0.26 s | 184 s |
+| 2 | 0.52 s | 396 s |
+| 3 | 0.37 s | 662 s |
+| 4 | 0.24 s | 118 s |
+
+(2-vCPU container, 1 PyTorch thread; the indexed time includes running OSNet on
+the photo, about 0.2 s.)
+
+**First end-to-end text numbers (Days 9, 12).** 12 witness descriptions (3 per
+case), written from `query.jpg` before any text search ran:
+
+| Query | Hit@1 | Hit@5 |
+|---|---:|---:|
+| text only (IRRA) | 8/12 | 11/12 |
+| text, detailed descriptions only | 4/4 | 4/4 |
+| text, short descriptions only | 1/4 | 3/4 |
+| photo + text, late fusion (alpha 0.5) | 12/12 | 12/12 |
+| photo + text, repo 1's embedding sum | 12/12 | 12/12 |
+| photo only (OSNet), 4 queries | 4/4 | 4/4 |
+
+The photo alone already finds all 4 targets, so this test set cannot show what
+hybrid adds or tell late fusion from repo 1's mixed-space sum (decision 0009,
+AUDIT.md F22). Indexed text and hybrid search equal a full scan for every query.
+
+**Where ingest time goes (Day 13, case 2):** IRRA image 51%, OSNet 25%,
+DeepSORT 17% (mostly its own MobileNet embedder), YOLO11n 7%, decode 0.2%.
+Batching crops per frame is only 13% faster than one crop per pass on CPU.
+
+**Model versions (Day 8)** are scored on a private gate set (campus ReID test
+split + cached crops of the 4 videos + the text set) and recorded in MLflow;
+see docs/results/week2.md. The campus split reproduces the published osnet v1
+numbers exactly (75.4% mAP, 81.7% Rank-1). IRRA's college Rank-1 cannot be
+re-measured until the college test split arrives.
 
 Details, the config table and all findings: [AUDIT.md](AUDIT.md).
 

@@ -76,3 +76,24 @@ def test_protocols_rank_identically_on_unit_vectors():
     a = evaluate_reid(cos, q_p, g_p, np.zeros(5), np.ones(9))
     b = evaluate_reid(euc, q_p, g_p, np.zeros(5), np.ones(9))
     assert a.mAP == pytest.approx(b.mAP)
+
+
+def test_vectors_can_be_reused_from_the_ingest_after_a_spot_check(tmp_path, textured_video):
+    ingest = IngestPipeline(FakeDetector(), FakeTracker(), {"osnet": FakeEncoder("osnet")}).run(
+        textured_video
+    )
+    case = load_case(export_case("c", textured_video, ingest, tmp_path / "c.npz"))
+    assert case.spot_check(ingest, "osnet", FakeEncoder("osnet")) > 0
+    reused = case.from_ingest(ingest, "osnet")
+    fresh = case.embed({"osnet": FakeEncoder("osnet")})
+    for a, b in zip(reused, fresh, strict=True):
+        assert a.embeddings.keys() == b.embeddings.keys()
+        for k in a.embeddings:
+            assert np.array_equal(a.embeddings[k], b.embeddings[k])
+
+    class Off(FakeEncoder):
+        def encode_images(self, images):
+            return super().encode_images(images) + 1e-3
+
+    with pytest.raises(AssertionError, match="differs"):
+        case.spot_check(ingest, "osnet", Off("osnet"))
