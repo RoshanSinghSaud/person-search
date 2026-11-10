@@ -6,15 +6,17 @@ final-year system into a production service: index once, search many.
 
 [![CI](https://github.com/RoshanSinghSaud/person-search/actions/workflows/ci.yml/badge.svg)](https://github.com/RoshanSinghSaud/person-search/actions/workflows/ci.yml)
 
-> **Status: Weeks 1-2 done; Week 3 steps 1 (IRRA INT8) and 2 (web API) done.** Week 1 extracted both legacy repos into modules
+> **Status: Weeks 1-2 done; Week 3 steps 1-3 (IRRA INT8, web API, Docker) done.** Week 1 extracted both legacy repos into modules
 > with parity and golden tests ([AUDIT.md](AUDIT.md)). Week 2 added evaluation
 > for photo and text queries, a Qdrant index holding both vectors, indexed
 > photo, text and hybrid search (exactly equal to a full scan), the first
 > end-to-end text numbers and per-stage timings
 > ([docs/results/week2.md](docs/results/week2.md)). Week 3 put IRRA's image
-> tower in ONNX INT8 and the search behind a FastAPI service
-> ([docs/results/week3_api.md](docs/results/week3_api.md)). Docker and
-> deployment follow the plan.
+> tower in ONNX INT8, the search behind a FastAPI service
+> ([docs/results/week3_api.md](docs/results/week3_api.md)) and the service in
+> a CPU-only Docker image that downloads its weights and index at start
+> ([docs/results/week3_docker.md](docs/results/week3_docker.md)). Deployment
+> follows the plan.
 
 ## How it works
 
@@ -58,8 +60,10 @@ tests/parity/        new modules vs legacy code (make parity)
 tests/golden/        pipeline.run vs repo 2 on the 4 test cases (make golden)
 tools/legacy/        Day 2 harness, golden builder, drawn-box extractor (import legacy by path)
 tools/analysis/      scoring sweeps, track contact sheets, label sensitivity
-docs/decisions/      one note per decision (0007-0010: Week 2; 0011-0012: Week 3)
-docs/results/        week2.md, week3_onnx.md, week3_api.md, generated from the run outputs
+configs/assets.yaml  where the service downloads missing weights and indexes from (SHA-256 pinned)
+Dockerfile           CPU-only image: uv.lock -> venv, assets fetched at start into /data
+docs/decisions/      one note per decision (0007-0010: Week 2; 0011-0013: Week 3)
+docs/results/        week2.md, week3_onnx.md, week3_api.md, week3_docker.md, from the run outputs
 ```
 
 ## Quick start
@@ -134,6 +138,33 @@ curl http://localhost:8000/videos               # indexed videos and their video
 The service refuses to start if the index folder was built for other model
 versions than the ones it loads (an empty folder gets a new index). Design and limits: decision 0012. `make smoke-api`
 checks a running server against the Week 2 numbers.
+
+### Run it in Docker
+
+The image holds the code and CPU-only PyTorch; on start it downloads whatever
+weights and index are missing into `/data` (`configs/assets.yaml`, SHA-256
+checked), then serves on port 8000. Keep `/data` on a volume and later starts
+take ~10 s.
+
+```bash
+make docker-build                    # CPU-only image for this machine (~3 min the first time)
+
+# a) no Hugging Face needed: mount ./models and the index you already have
+make api-index                       # once: data/index from the Week 2 index
+make docker-run-local                # http://localhost:8000/docs
+
+# b) the way the server runs it: everything downloaded at start
+make publish-assets REPO=<hf-user>/person-search-assets   # once, needs a write token
+export PS_ASSETS__REPO=<hf-user>/person-search-assets HF_TOKEN=hf_...   # a read token is enough
+make docker-run                      # first start ~1.1 GB download, then cached in the ps-data volume
+```
+
+`make publish-assets` uploads YOLO, OSNet, the INT8 IRRA tower and the Week 2
+index to a private repo, after checking each file against the manifest, and
+prints the commit to pin as `revision` in `configs/assets.yaml`. The IRRA
+weights come from the IRRA team's public repo. On an Apple Silicon Mac the
+image builds natively (arm64); `make docker-build DOCKER_PLATFORM=linux/amd64`
+builds exactly the server's image (slower, emulated). Design: decision 0013.
 
 Every setting can be overridden with `PS_<SECTION>__<FIELD>`, e.g.
 `PS_SCORING__BASE_THRESHOLD=0.7`. See `.env.example`.
@@ -300,6 +331,18 @@ With the real models over HTTP, the API gives the same answers as Week 2:
 Searching all videos at once applies the paper's threshold per video, so a
 photo can also "match" in other videos (AUDIT.md F29); pass `video_ids` or
 `cameras` when you know where to look.
+
+### Week 3, step 3: Docker
+
+Full tables: [docs/results/week3_docker.md](docs/results/week3_docker.md); decision 0013.
+
+| | |
+|---|---|
+| Image | 603 MB compressed, torch `2.5.0+cpu`, no CUDA; amd64 and arm64 |
+| Cold start (empty `/data`, 1.1 GB to download and verify) | 37 s to `/health` |
+| Warm restart (volume kept) | 9 s, no download; ingested videos kept |
+| Answers inside the container | photo 4/4, text 12/12, identical to Week 2 |
+| Memory | 2.3 GB idle |
 
 ## Credits
 
