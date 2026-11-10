@@ -122,6 +122,16 @@ class ApiSettings(BaseModel):
     )
 
 
+class AssetsSettings(BaseModel):
+    """Where missing weights and indexes come from (``person_search.assets``, decision 0013)."""
+
+    manifest: Path = Path("configs/assets.yaml")
+    repo: str | None = Field(
+        None, description="Hugging Face repo with the published assets; overrides the manifest's"
+    )
+    revision: str | None = Field(None, description="commit or branch of that repo")
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_prefix="PS_",
@@ -142,6 +152,7 @@ class Settings(BaseSettings):
     scoring: ScoringSettings = ScoringSettings()
     fusion: FusionSettings = FusionSettings()
     api: ApiSettings = ApiSettings()
+    assets: AssetsSettings = AssetsSettings()
 
     @field_validator("device")
     @classmethod

@@ -37,5 +37,5 @@ def configure_logging(level: str | int = "INFO", json_format: bool = False) -> N
     root.handlers[:] = [handler]
     root.setLevel(level)
     # Third-party chatter
-    for noisy in ("ultralytics", "urllib3", "matplotlib", "PIL"):
+    for noisy in ("ultralytics", "urllib3", "matplotlib", "PIL", "httpx", "httpx2"):
         logging.getLogger(noisy).setLevel(logging.WARNING)

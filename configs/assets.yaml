@@ -1,0 +1,45 @@
+# What the service downloads when it starts and a file is missing
+# (`person-search fetch-assets`, run by `person-search serve`; decision 0013).
+#
+# Sources are Hugging Face Hub repos. A private repo needs HF_TOKEN in the
+# environment. Entries without their own `repo` come from the assets repo:
+# `repo` below, overridden by PS_ASSETS__REPO. `make publish-assets` uploads
+# them there, at the paths shown in each comment.
+#
+# Every download is checked against `size` and `sha256` before it is moved into
+# place; a mismatch stops the start. The weights' SHA-256 values are the ones in
+# configs/models.yaml (tests/unit/test_assets.py keeps them equal).
+#
+# What is already on disk is kept: a weight file with the right size, and any
+# index for the loaded model versions, because /ingest adds videos to it.
+
+repo: null           # <hf-user>/person-search-assets, private; or set PS_ASSETS__REPO
+revision: main       # pin the commit that `make publish-assets` prints
+
+weights:
+  yolo11n_person.pt:                         # assets repo: weights/yolo11n_person.pt
+    size: 5462426
+    sha256: 6be1c436c5314910277f5541757cbabb709669b2a61f53ff1febf4f413bddf42
+  osnet_campus_v1.pth.tar:                   # osnet-v1; assets repo: weights/osnet_campus_v1.pth.tar
+    size: 27037039
+    sha256: 52e15750640711566469bf44e55cc04a22193b27f138df7f57b7c4d16c5f2377
+  irra_v1.pth:                               # irra-v1: the IRRA team's public release
+    size: 1043302419
+    sha256: b1e77ac829d5bd609be0023b0c3cd033c7e18d7dffa465b817017f5bbf936809
+    repo: prasish17/clip-text-query
+    filename: best_model_text.pth
+    revision: 01fdc7acda72219ab69a5347139ccda6caf08cd1
+  irra_v2_image_int8.onnx:                   # irra-v2 image tower; assets repo: weights/irra_v2_image_int8.onnx
+    size: 89393508
+    sha256: 1fae9c322c20ebd36e2b20e3d508e177022be2f34de2f4dca04ca4a07a65817c
+
+# One entry per Qdrant collection; files are relative to the index folder
+# (PS_API__INDEX_PATH). Assets repo: indexes/<collection>/<file>.
+indexes:
+  detections__irra-v1__osnet-v1:             # Week 2: the 4 test videos, 16,483 points
+    meta.json:
+      size: 781
+      sha256: d2a59bf005cd2798384bd1b5c9c0c78a861b5ac9579b528939d50b8e07bee21c
+    collection/detections__irra-v1__osnet-v1/storage.sqlite:
+      size: 64098304
+      sha256: 6572b5012f126bbc426cecd7d6e4f7c5fda90174af73c5e9b28f4187179bd7f8
