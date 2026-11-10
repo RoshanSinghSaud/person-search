@@ -45,14 +45,12 @@ dependencies = [
 person-search = "person_search.cli:main"
 
 [dependency-groups]
-# API, queue, vector store, metrics (Weeks 2-3). Filled in as those days land.
+# The HTTP service (src/person_search/api, decision 0012). Ingest jobs run in an
+# in-process queue, so no Redis/RQ until the service spans more than one machine.
 serve = [
     "fastapi>=0.111",
     "uvicorn[standard]>=0.30",
     "python-multipart>=0.0.9",
-    "redis>=5.0",
-    "rq>=1.16",
-    "prometheus-client>=0.20",
 ]
 # Evaluation, experiment tracking, gate set access (Week 2 / Day 24): make eval-models, make register.
 eval = [
@@ -71,6 +69,7 @@ dev = [
     "torchreid==0.2.5",                  # parity tests only: the legacy OSNet path
     "tensorboard>=2.16",                 # imported by torchreid at import time
     "onnx>=1.16",                        # export + quantization tests (tests/unit/test_onnx_image.py)
+    "httpx>=0.27",                       # FastAPI TestClient (tests/unit/test_api.py)
 ]
 
 [tool.hatch.metadata]

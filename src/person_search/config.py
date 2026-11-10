@@ -106,6 +106,22 @@ class FusionSettings(BaseModel):
     normalization: Literal["minmax", "zscore"] = "minmax"
 
 
+class ApiSettings(BaseModel):
+    """The HTTP service (``person_search.api``); see docs/decisions/0012-web-api.md."""
+
+    index_path: Path = Field(
+        Path("data/index"), description="Qdrant local-mode folder; created empty if missing"
+    )
+    upload_dir: Path = Field(
+        Path("data/uploads"), description="uploaded videos wait here until ingested"
+    )
+    max_photo_mb: float = Field(10.0, gt=0)
+    max_video_mb: float = Field(500.0, gt=0)
+    max_pending_jobs: int = Field(
+        4, ge=1, description="queued + running ingest jobs; more and /ingest answers 429"
+    )
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_prefix="PS_",
@@ -125,6 +141,7 @@ class Settings(BaseSettings):
     irra: IRRASettings = IRRASettings()
     scoring: ScoringSettings = ScoringSettings()
     fusion: FusionSettings = FusionSettings()
+    api: ApiSettings = ApiSettings()
 
     @field_validator("device")
     @classmethod
