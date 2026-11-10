@@ -6,12 +6,14 @@ final-year system into a production service: index once, search many.
 
 [![CI](https://github.com/RoshanSinghSaud/person-search/actions/workflows/ci.yml/badge.svg)](https://github.com/RoshanSinghSaud/person-search/actions/workflows/ci.yml)
 
-> **Status: Weeks 1-2 done; Week 3 step 1 (IRRA INT8) done.** Week 1 extracted both legacy repos into modules
+> **Status: Weeks 1-2 done; Week 3 steps 1 (IRRA INT8) and 2 (web API) done.** Week 1 extracted both legacy repos into modules
 > with parity and golden tests ([AUDIT.md](AUDIT.md)). Week 2 added evaluation
 > for photo and text queries, a Qdrant index holding both vectors, indexed
 > photo, text and hybrid search (exactly equal to a full scan), the first
 > end-to-end text numbers and per-stage timings
-> ([docs/results/week2.md](docs/results/week2.md)). The API, ONNX/INT8 and
+> ([docs/results/week2.md](docs/results/week2.md)). Week 3 put IRRA's image
+> tower in ONNX INT8 and the search behind a FastAPI service
+> ([docs/results/week3_api.md](docs/results/week3_api.md)). Docker and
 > deployment follow the plan.
 
 ## How it works
@@ -48,7 +50,7 @@ src/person_search/
   search/            photo.py text.py hybrid.py results.py (in memory); indexed.py (over the index)
   index/             base.py (VectorIndex) qdrant.py (local mode or server) memory.py (fake) points.py
   eval/              frame_metrics.py reid.py golden.py text_e2e.py (Hit@k) campus.py gate_set.py gate.py
-  api/               Day 17 (planned contents in its __init__)
+  api/               app.py (FastAPI, lifespan model loading) routes.py service.py jobs.py schemas.py
 configs/             report_run.yaml (default = repo 2's final code) paper.yaml models.yaml (model versions)
 scripts/             build_index eval_search gate_set eval_models profile_ingest week2_report fetch_weights
 tests/unit/          unit tests, no weights needed (CI)
@@ -56,15 +58,15 @@ tests/parity/        new modules vs legacy code (make parity)
 tests/golden/        pipeline.run vs repo 2 on the 4 test cases (make golden)
 tools/legacy/        Day 2 harness, golden builder, drawn-box extractor (import legacy by path)
 tools/analysis/      scoring sweeps, track contact sheets, label sensitivity
-docs/decisions/      one note per decision (0007-0010: Week 2)
-docs/results/        week2.md, generated from the run outputs
+docs/decisions/      one note per decision (0007-0010: Week 2; 0011-0012: Week 3)
+docs/results/        week2.md, week3_onnx.md, week3_api.md, generated from the run outputs
 ```
 
 ## Quick start
 
 ```bash
 # 1. environment (Python 3.10, CPU PyTorch)
-uv sync --group dev --group eval   # or: make setup
+uv sync --group dev --group eval --group serve   # or: make setup
 # 2. legacy repos for parity/golden tests, outside this repo (never edit them)
 make legacy                    # -> ../legacy/{person-reid-clip,amrit-pbvs}
 # 3. weights -> models/ (team Drive + Hugging Face), prints SHA-256s
@@ -100,6 +102,38 @@ make register          # Day 8: MLflow registry (MLFLOW_TRACKING_URI for DagsHub
 make profile           # Day 13: time per ingest stage
 uv run python scripts/week2_report.py   # -> docs/results/week2.md
 ```
+
+### Run the API
+
+```bash
+make api-index          # copy the Week 2 index (4 test videos) to data/index
+make serve              # http://localhost:8000/docs; models load first (~15 s)
+```
+
+```bash
+# photo, description, or both (late fusion; alpha = photo weight)
+curl -F photo=@query.jpg http://localhost:8000/search
+curl -F description="a man in a white shirt and dark trousers" -F top_k=5 http://localhost:8000/search
+curl -F photo=@query.jpg -F description="white shirt, cap" -F alpha=0.5 http://localhost:8000/search
+curl -F description="..." -F video_ids=fce3e914169cac08 http://localhost:8000/search  # one video
+
+# index a new video: 202 + a job at once, then poll the job
+curl -F video=@clip.mp4 -F camera="gate 2" http://localhost:8000/ingest
+curl http://localhost:8000/jobs/<job_id>        # queued -> running (progress) -> succeeded
+curl http://localhost:8000/health               # model versions, index size, jobs
+curl http://localhost:8000/videos               # indexed videos and their video_id
+```
+
+| Endpoint | What it does |
+|---|---|
+| `POST /search` | `photo` and/or `description` (multipart). Always returns ranked `tracks`; a photo query also returns the paper's decision per video: `matched`, accepted tracks, frame segments |
+| `POST /ingest` | `video` (+ `camera`). **202** with a job and `Location: /jobs/{id}`; one video is ingested at a time, 429 beyond 4 pending. An already indexed video returns `skipped: true` |
+| `GET /jobs/{id}` | `queued` / `running` (with `progress`) / `succeeded` (points, tracks, seconds) / `failed` (error) |
+| `GET /health` | model versions in use (`osnet-v1`, `irra-v1`), index collection and size, job counts |
+
+The service refuses to start if the index folder was built for other model
+versions than the ones it loads (an empty folder gets a new index). Design and limits: decision 0012. `make smoke-api`
+checks a running server against the Week 2 numbers.
 
 Every setting can be overridden with `PS_<SECTION>__<FIELD>`, e.g.
 `PS_SCORING__BASE_THRESHOLD=0.7`. See `.env.example`.
@@ -249,6 +283,23 @@ make benchmark                     # speed of the three backends
 make gate-compare CANDIDATE=irra-v2
 export PS_IRRA__IMAGE_ONNX=models/irra_v2_image_int8.onnx PS_IRRA__VERSION=irra-v2
 ```
+
+### Week 3, step 2: the web API
+
+Full tables: [docs/results/week3_api.md](docs/results/week3_api.md); decision 0012.
+With the real models over HTTP, the API gives the same answers as Week 2:
+
+| Check (each case searched in its own video) | Result |
+|---|---|
+| Photo: accepted tracks equal Week 2 | 4/4 |
+| Text: top track and score equal Week 2 | 12/12 |
+| Photo + text (alpha 0.5): top track is a photo-accepted track | 12/12 |
+| p50 latency, photo / text / both (2 vCPU) | 0.26 s / 0.27 s / 0.93 s |
+| `POST /ingest` of a 10 s clip | 202 in 63 ms; searchable 59 s later, target found |
+
+Searching all videos at once applies the paper's threshold per video, so a
+photo can also "match" in other videos (AUDIT.md F29); pass `video_ids` or
+`cameras` when you know where to look.
 
 ## Credits
 

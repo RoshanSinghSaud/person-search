@@ -25,8 +25,8 @@ help: ## list targets
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-14s\033[0m %s\n", $$1, $$2}'
 
 .PHONY: setup
-setup: ## create the env (CPU torch) with dev + eval tools, install pre-commit hooks
-	uv sync --group dev --group eval
+setup: ## create the env (CPU torch) with dev + eval + API deps, install pre-commit hooks
+	uv sync --group dev --group eval --group serve
 	@$(MAKE) --no-print-directory fix-pth
 	uv run --no-sync python -c "import person_search; print('person_search importable from', person_search.__file__)"
 	uv run --no-sync pre-commit install
@@ -153,6 +153,25 @@ benchmark: ## PyTorch FP32 vs ONNX FP32 vs ONNX INT8 speed of IRRA's image tower
 gate-compare: ## gate verdict for CANDIDATE=<version> against production (exit 1 = blocked)
 	$(PY) scripts/eval_models.py compare --results $(WEEK2_DIR)/model_eval.json \
 		$(wildcard $(LEGACY_DIR)/runs/week3/model_eval_*.json) --candidate $(CANDIDATE)
+
+# ---------------------------------------------------------------- Step 2: API
+API_INDEX ?= data/index
+PORT      ?= 8000
+
+.PHONY: api-index
+api-index: ## copy the Week 2 index (the 4 test videos) to $(API_INDEX), for the API to serve and extend
+	@test ! -e $(API_INDEX) || { echo "$(API_INDEX) already exists"; exit 1; }
+	mkdir -p $(dir $(API_INDEX)) && cp -R $(INDEX_DIR) $(API_INDEX)
+
+.PHONY: serve
+serve: ## run the API on :$(PORT); models load first (~15 s), docs at /docs
+	PS_API__INDEX_PATH=$(API_INDEX) uv run --group serve uvicorn person_search.api.app:create_app \
+		--factory --host 0.0.0.0 --port $(PORT)
+
+.PHONY: smoke-api
+smoke-api: ## check a running API (make serve) over HTTP against Week 2's numbers (CLIP=video to ingest)
+	$(PY) scripts/smoke_api.py --cases-dir $(CASES_DIR) $(if $(CLIP),--ingest $(CLIP)) \
+		--out $(LEGACY_DIR)/runs/week3/api_smoke.json
 
 .PHONY: clean
 clean: ## remove caches and outputs

@@ -18,6 +18,8 @@ htmlcov/
 models/*
 !models/README.md
 outputs/
+# API index + uploads (make api-index, make serve)
+data/
 *.pt
 *.pth
 *.pth.tar*
