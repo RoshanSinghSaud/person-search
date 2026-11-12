@@ -61,7 +61,8 @@ ENV PATH=/opt/venv/bin:$PATH \
     PS_API__CLIP_DIR=/data/clips \
     PS_ASSETS__MANIFEST=/app/configs/assets.yaml \
     PORT=8000
-VOLUME ["/data"]
+# No VOLUME instruction: mount one at /data yourself (-v ps-data:/data); on a
+# Hugging Face Space an image-declared volume could hide the uid-1000 /data (0015).
 EXPOSE 8000
 # Generous start period: the first start downloads ~1.1 GB before the models load.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=600s --retries=3 \
