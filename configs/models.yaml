@@ -13,7 +13,7 @@
 
 production:
   osnet: osnet-v1
-  irra: irra-v1
+  irra: irra-v2
 
 models:
   osnet-v0:
