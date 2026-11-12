@@ -13,8 +13,8 @@
 # What is already on disk is kept: a weight file with the right size, and any
 # index for the loaded model versions, because /ingest adds videos to it.
 
-repo: null           # <hf-user>/person-search-assets, private; or set PS_ASSETS__REPO
-revision: main       # pin the commit that `make publish-assets` prints
+repo: Roshan0091/person-search-assets   # private; PS_ASSETS__REPO overrides it
+revision: 3921d0ebf9891db176f6347a3081be0d6d3e9e78   # printed by `make publish-assets`, 2026-11-12
 
 weights:
   yolo11n_person.pt:                         # assets repo: weights/yolo11n_person.pt

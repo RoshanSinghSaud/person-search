@@ -83,9 +83,10 @@ jobs:
           load_manifest('/app/configs/assets.yaml')
           print('torch', torch.__version__, 'cv2', cv2.__version__)"
 
-      - name: Without assets or a repo, the container stops with a clear error
-        # The weights and index download at start (decision 0013); CI has no
-        # HF token, so the start must fail fast, not hang or crash-loop silently.
+      - name: Without the assets or a way to fetch them, the container stops with a clear error
+        # The weights and index download at start (decision 0013); here there is no
+        # network and no HF token, so the start must fail fast (exit 2, naming the
+        # setting to check), not hang or crash-loop silently.
         run: |
           set +e
           docker run --rm --network none person-search:ci > start.log 2>&1
