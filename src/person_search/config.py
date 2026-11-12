@@ -21,7 +21,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 import yaml
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, Field, SecretStr, field_validator, model_validator
 from pydantic_settings import (
     BaseSettings,
     PydanticBaseSettingsSource,
@@ -128,6 +128,18 @@ class ApiSettings(BaseModel):
     max_pending_jobs: int = Field(
         4, ge=1, description="queued + running ingest jobs; more and /ingest answers 429"
     )
+    api_key: SecretStr | None = Field(
+        None,
+        description="when set, POST /ingest needs it in the X-API-Key header (the public "
+        "demo, decision 0015); searches stay open. Unset = uploads open (local runs)",
+    )
+
+    @field_validator("api_key")
+    @classmethod
+    def _long_enough(cls, v: SecretStr | None) -> SecretStr | None:
+        if v is not None and len(v.get_secret_value()) < 16:
+            raise ValueError("api_key must be at least 16 characters (openssl rand -hex 24)")
+        return v
 
 
 class AssetsSettings(BaseModel):

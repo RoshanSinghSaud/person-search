@@ -4,6 +4,7 @@ so a slow model call never blocks the event loop."""
 from __future__ import annotations
 
 import logging
+import secrets
 import uuid
 from collections.abc import Callable
 from pathlib import Path
@@ -11,8 +12,20 @@ from typing import Annotated, Any
 
 import cv2
 import numpy as np
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, Response, UploadFile
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    Form,
+    HTTPException,
+    Request,
+    Response,
+    Security,
+    UploadFile,
+)
 from fastapi.responses import FileResponse, RedirectResponse
+from fastapi.security import APIKeyHeader
+from pydantic import SecretStr
 
 from person_search.api.clips import Style
 from person_search.api.jobs import Job, JobRunner, QueueFullError
@@ -33,6 +46,8 @@ MB = 1 << 20
 MAX_TOP_K = 50
 MAX_DESCRIPTION = 500
 VIDEO_SUFFIXES = (".mp4", ".avi", ".mov", ".mkv", ".webm", ".m4v")
+API_KEY_HEADER = "X-API-Key"
+API_KEY_REFUSED = f"uploads need a valid {API_KEY_HEADER} header"
 
 router = APIRouter()
 
@@ -49,6 +64,30 @@ def get_jobs(request: Request) -> JobRunner:
 
 ServiceDep = Annotated[SearchService, Depends(get_service)]
 JobsDep = Annotated[JobRunner, Depends(get_jobs)]
+
+_api_key_header = APIKeyHeader(
+    name=API_KEY_HEADER,
+    auto_error=False,
+    description="Needed by POST /ingest when the server sets PS_API__API_KEY (the public demo).",
+)
+
+
+def api_key_ok(expected: SecretStr | None, given: str | None) -> bool:
+    """No key configured (local runs): open. Otherwise a constant-time comparison."""
+    if expected is None:
+        return True
+    return given is not None and secrets.compare_digest(
+        given.encode(), expected.get_secret_value().encode()
+    )
+
+
+def require_api_key(
+    service: ServiceDep, key: Annotated[str | None, Security(_api_key_header)]
+) -> None:
+    """Uploads only. The ``limit_body`` middleware already refused a wrong key before the
+    body was read; this dependency documents the header in /docs (the Authorize button)."""
+    if not api_key_ok(service.settings.api.api_key, key):
+        raise HTTPException(401, API_KEY_REFUSED)
 
 
 def _error(*codes: int) -> dict[int | str, dict[str, object]]:
@@ -285,7 +324,8 @@ def _check_video(path: Path) -> None:
     status_code=202,
     response_model=JobOut,
     tags=["ingest"],
-    responses=_error(400, 413, 415, 422, 429),
+    responses=_error(400, 401, 413, 415, 422, 429),
+    dependencies=[Depends(require_api_key)],
 )
 def ingest(
     response: Response,
@@ -302,7 +342,8 @@ def ingest(
         ),
     ] = "unknown",
 ) -> JobOut:
-    """Queue a video for indexing and return a job at once (**202**).
+    """Queue a video for indexing and return a job at once (**202**). When the server has
+    an API key (the public demo), send it in the ``X-API-Key`` header (**401** otherwise).
 
     Poll ``GET /jobs/{job_id}`` until ``status`` is ``succeeded`` or ``failed``.
     Uploading a video that is already indexed, or already queued, does no new work.

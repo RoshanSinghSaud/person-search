@@ -212,7 +212,11 @@ def test_openapi_contract(client):
     ingest_form = form("/ingest")
     assert set(ingest_form["properties"]) == {"video", "camera"}
     assert ingest_form["required"] == ["video"]
-    assert schema["paths"]["/ingest"]["post"]["responses"].keys() >= {"202", "413", "429"}
+    assert schema["paths"]["/ingest"]["post"]["responses"].keys() >= {"202", "401", "413", "429"}
+    # uploads take an API key (the /docs Authorize button); searches do not
+    assert schema["paths"]["/ingest"]["post"]["security"] == [{"APIKeyHeader": []}]
+    assert schema["components"]["securitySchemes"]["APIKeyHeader"]["name"] == "X-API-Key"
+    assert "security" not in schema["paths"]["/search"]["post"]
     assert set(comps["SearchResponse"]["required"]) == {
         "mode",
         "model_versions",
@@ -494,6 +498,39 @@ def test_ingest_size_limits(tmp_path):
         # Content-Length above limit + 1 MB: refused before the body is read
         r = c.post("/ingest", files={"video": ("v.avi", b"\0" * (3 << 20), "video/avi")})
         assert r.status_code == 413 and "larger than" in r.json()["detail"]
+
+
+KEY = "k" * 24
+
+
+def test_with_an_api_key_uploads_need_it_and_searches_do_not(tmp_path):
+    svc = build_service("memory", tmp_path, api_key=KEY)
+    with TestClient(create_app(svc)) as c:
+        files = {"video": ("v.avi", video_bytes(tmp_path, 50), "video/avi")}
+        for headers in ({}, {"X-API-Key": "wrong"}, {"X-API-Key": ""}):
+            r = c.post("/ingest", files=files, headers=headers)
+            assert r.status_code == 401 and "X-API-Key" in r.json()["detail"]
+        assert c.get("/health").json()["jobs"]["queued"] == 0
+        r = c.post("/ingest", files=files, headers={"X-API-Key": KEY})
+        assert r.status_code == 202
+        assert wait_job(c, r.json()["job_id"])["status"] == "succeeded"
+        assert c.post("/search", data={"description": TARGET_TEXT}).status_code == 200
+        assert c.get("/videos").status_code == 200
+
+
+def test_a_wrong_key_is_refused_before_the_body_is_read(tmp_path):
+    svc = build_service("memory", tmp_path, api_key=KEY, max_video_mb=0.001)
+    with TestClient(create_app(svc)) as c:
+        # without the key a too-large upload is a 401, not a 413: nothing was read or saved
+        r = c.post("/ingest", files={"video": ("v.avi", b"\0" * (3 << 20), "video/avi")})
+        assert r.status_code == 401
+        assert not (tmp_path / "up").exists() or not list((tmp_path / "up").iterdir())
+
+
+def test_a_short_api_key_is_a_configuration_error():
+    with pytest.raises(ValueError, match="at least 16"):
+        ApiSettings(api_key="short")  # type: ignore[arg-type]
+    assert KEY not in repr(ApiSettings(api_key=KEY))  # type: ignore[arg-type]
 
 
 def test_unknown_job_is_404(client):

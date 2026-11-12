@@ -21,7 +21,7 @@ from fastapi.responses import JSONResponse
 from person_search import __version__
 from person_search.api.clips import ClipError
 from person_search.api.jobs import JobRunner, QueueFullError
-from person_search.api.routes import MB, router
+from person_search.api.routes import API_KEY_HEADER, API_KEY_REFUSED, MB, api_key_ok, router
 from person_search.api.service import SearchService, build_service
 from person_search.config import Settings, load_settings
 from person_search.errors import QueryError, VideoReadError
@@ -65,8 +65,15 @@ def create_app(service: SearchService | None = None, settings: Settings | None =
     async def limit_body(
         request: Request, call_next: Callable[[Request], Awaitable[Response]]
     ) -> Response:
-        """Refuse an oversized upload from its Content-Length, before reading the body."""
+        """Refuse an upload without the API key, or an oversized one from its
+        Content-Length, before reading the body."""
         api = request.app.state.service.settings.api
+        if (
+            request.method == "POST"
+            and request.url.path == "/ingest"
+            and not api_key_ok(api.api_key, request.headers.get(API_KEY_HEADER))
+        ):
+            return JSONResponse({"detail": API_KEY_REFUSED}, 401)
         limits = {"/ingest": api.max_video_mb, "/search": api.max_photo_mb}
         limit_mb = limits.get(request.url.path)
         length = request.headers.get("content-length", "")
