@@ -51,6 +51,7 @@ serve = [
     "fastapi>=0.111",
     "uvicorn[standard]>=0.30",
     "python-multipart>=0.0.9",
+    "imageio-ffmpeg>=0.5",
 ]
 # Evaluation, experiment tracking, gate set access (Week 2 / Day 24): make eval-models, make register.
 eval = [

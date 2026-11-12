@@ -163,6 +163,10 @@ api-index: ## copy the Week 2 index (the 4 test videos) to $(API_INDEX), for the
 	@test ! -e $(API_INDEX) || { echo "$(API_INDEX) already exists"; exit 1; }
 	mkdir -p $(dir $(API_INDEX)) && cp -R $(INDEX_DIR) $(API_INDEX)
 
+.PHONY: api-videos
+api-videos: ## keep the 4 test videos for the API's result clips (data/videos, hard links)
+	$(PY) -m person_search.cli store-videos $(foreach c,$(CASES),$(CASES_DIR)/$(c)/test_video.mp4)
+
 .PHONY: serve
 serve: ## run the API on :$(PORT) (fetches missing assets first); models load in ~15 s, docs at /docs
 	PS_API__INDEX_PATH=$(API_INDEX) uv run --group serve python -m person_search.cli serve \
@@ -193,8 +197,9 @@ docker-run: ## run $(IMAGE) on :$(PORT); the first start downloads weights + ind
 
 .PHONY: docker-run-local
 docker-run-local: ## run $(IMAGE) on :$(PORT) with ./models and $(API_INDEX) mounted: nothing to download
+	@mkdir -p data/videos
 	docker run --rm -p $(PORT):8000 -v "$(CURDIR)/models:/data/models:ro" \
-		-v "$(CURDIR)/$(API_INDEX):/data/index" $(IMAGE)
+		-v "$(CURDIR)/$(API_INDEX):/data/index" -v "$(CURDIR)/data/videos:/data/videos" $(IMAGE)
 
 .PHONY: clean
 clean: ## remove caches and outputs

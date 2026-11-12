@@ -31,6 +31,9 @@ class VideoOut(BaseModel):
     video: str | None = Field(description="file name given at ingest")
     camera: str | None
     points: int
+    stored: bool = Field(
+        False, description="the original video is on the server, so result clips can be cut"
+    )
 
 
 class TrackOut(BaseModel):
@@ -43,6 +46,15 @@ class TrackOut(BaseModel):
     accepted: bool | None = Field(
         None, description="photo queries only: passed the paper's dynamic threshold"
     )
+    start_s: float | None = Field(None, description="first time the track is on screen (s)")
+    end_s: float | None = Field(None, description="last time the track is on screen (s)")
+    start_frame: int | None = None
+    end_frame: int | None = None
+    clip_url: str | None = Field(
+        None,
+        description="video of every frame of this track, person boxed; add ?style=crop for "
+        "the crops (needs the original video on the server)",
+    )
 
 
 class SegmentOut(BaseModel):
@@ -53,6 +65,8 @@ class SegmentOut(BaseModel):
     start_sample: int = Field(description="0-based index in the 12 fps sampled stream")
     end_sample: int
     n_samples: int
+    start_s: float | None = None
+    end_s: float | None = None
 
 
 class PhotoVideoResult(BaseModel):
@@ -67,6 +81,9 @@ class PhotoVideoResult(BaseModel):
     accepted_tracks: list[str]
     selected_frames: int
     segments: list[SegmentOut]
+    clip_url: str | None = Field(
+        None, description="with clip=true: the selected frames as a video, like the paper's output"
+    )
 
 
 class SearchResponse(BaseModel):
@@ -80,6 +97,10 @@ class SearchResponse(BaseModel):
         default_factory=list, description="photo only: per-video decision and frame segments"
     )
     alpha: float | None = Field(None, description="hybrid only: weight of the photo score")
+    clip_url: str | None = Field(
+        None, description="with clip=true: a video of the best result (open it in a browser)"
+    )
+    notes: list[str] = Field(default_factory=list)
     timing_ms: dict[str, float]
 
 

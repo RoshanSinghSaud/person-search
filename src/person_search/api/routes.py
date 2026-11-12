@@ -12,8 +12,9 @@ from typing import Annotated, Any
 import cv2
 import numpy as np
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, Response, UploadFile
-from fastapi.responses import RedirectResponse
+from fastapi.responses import FileResponse, RedirectResponse
 
+from person_search.api.clips import Style
 from person_search.api.jobs import Job, JobRunner, QueueFullError
 from person_search.api.schemas import (
     ErrorOut,
@@ -114,6 +115,7 @@ def _read_photo(photo: UploadFile, max_bytes: int) -> np.ndarray | None:
     responses=_error(400, 413, 422),
 )
 def search(
+    request: Request,
     service: ServiceDep,
     photo: Annotated[
         UploadFile | None,
@@ -153,6 +155,14 @@ def search(
         list[str] | None,
         Form(description="search only these camera labels; empty = all", examples=[[]]),
     ] = None,
+    clip: Annotated[
+        bool,
+        Form(
+            description="also cut the best result into a video and return its clip_url "
+            "(photo: the paper's selected frames, like the final-year pipeline's output)",
+            examples=[False],
+        ),
+    ] = False,
 ) -> SearchResponse:
     """Find a person by **photo**, **description** or **both**.
 
@@ -175,7 +185,10 @@ def search(
                 errors.append("the /docs page pre-fills list fields with 'string': clear them")
             raise HTTPException(422, "; ".join(errors))
         flt = SearchFilter(video_ids=vids, cameras=cams)
-    result = service.search(photo=image, description=text, top_k=top_k, alpha=alpha, flt=flt)
+    result = service.search(
+        photo=image, description=text, top_k=top_k, alpha=alpha, flt=flt, clip=clip
+    )
+    _absolute_urls(request, result)
     log.info(
         "search mode=%s top=%s total_ms=%s",
         result.mode,
@@ -183,6 +196,59 @@ def search(
         result.timing_ms.get("total"),
     )
     return result
+
+
+def _absolute_urls(request: Request, result: SearchResponse) -> None:
+    """Clip URLs that can be pasted straight into a browser."""
+    base = str(request.base_url).rstrip("/")
+
+    def fix(url: str | None) -> str | None:
+        return f"{base}{url}" if url and url.startswith("/") else url
+
+    result.clip_url = fix(result.clip_url)
+    for v in result.videos:
+        v.clip_url = fix(v.clip_url)
+    for t in result.tracks:
+        t.clip_url = fix(t.clip_url)
+
+
+# --------------------------------------------------------------------- clips
+_MP4: dict[int | str, dict[str, Any]] = {
+    200: {"content": {"video/mp4": {}}, "description": "an H.264 MP4 (plays in a browser)"}
+}
+
+
+@router.get(
+    "/videos/{video_id}/tracks/{track_id}/clip",
+    response_class=FileResponse,
+    tags=["clips"],
+    responses={**_MP4, **_error(404, 422)},
+)
+def track_clip(
+    video_id: str, track_id: str, service: ServiceDep, style: Style = "boxed"
+) -> FileResponse:
+    """Every frame of one track as a video: `boxed` (full frame, person boxed) or
+    `crop` (the person only, like the final-year pipeline's output.mp4)."""
+    path = service.track_clip(video_id, track_id, style)
+    return FileResponse(
+        path,
+        media_type="video/mp4",
+        filename=f"track_{track_id}_{style}.mp4",
+        content_disposition_type="inline",
+    )
+
+
+@router.get(
+    "/clips/{name}",
+    response_class=FileResponse,
+    tags=["clips"],
+    responses={**_MP4, **_error(404)},
+)
+def get_clip(name: str, service: ServiceDep) -> FileResponse:
+    """A clip made by a search with `clip=true` (its `clip_url`)."""
+    return FileResponse(
+        service.clip_file(name), media_type="video/mp4", content_disposition_type="inline"
+    )
 
 
 # -------------------------------------------------------------------- ingest
@@ -256,7 +322,7 @@ def ingest(
         path.unlink(missing_ok=True)
         job = pending
     elif service.has_video(video_id):
-        path.unlink(missing_ok=True)
+        service.store_video(path, video_id)  # indexed already: keep the original for clips
         job = jobs.finished(
             service.indexed_summary(video_id), video_id=video_id, video=name, camera=camera
         )
@@ -264,11 +330,14 @@ def ingest(
 
         def work(progress: Callable[[float], None]) -> dict[str, Any]:
             try:
-                return service.ingest(
+                result = service.ingest(
                     path, video_id=video_id, name=name, camera=camera, progress=progress
                 )
-            finally:
+            except BaseException:
                 path.unlink(missing_ok=True)
+                raise
+            result["video_stored"] = service.store_video(path, video_id)
+            return result
 
         try:
             job = jobs.submit(work, video_id=video_id, video=name, camera=camera)

@@ -119,7 +119,12 @@ def build_service(
     )
     index.upsert(points_from_ingest(make_ingest(1, True), VIDEO_A, video_name="a.mp4", camera="A"))
     index.upsert(points_from_ingest(make_ingest(2, False), VIDEO_B, video_name="b.mp4", camera="B"))
-    settings = Settings(_env_file=None, api=ApiSettings(upload_dir=tmp_path / "up", **api))  # type: ignore[call-arg]
+    dirs = {
+        "upload_dir": tmp_path / "up",
+        "video_dir": tmp_path / "videos",
+        "clip_dir": tmp_path / "clips",
+    }
+    settings = Settings(_env_file=None, api=ApiSettings(**{**dirs, **api}))  # type: ignore[call-arg]
     osnet, irra = FakeEncoder(OSNET), FakeEncoder(IRRA)
 
     def new_ingest() -> IngestPipeline:
@@ -178,6 +183,8 @@ def test_openapi_contract(client):
         "/search": ["post"],
         "/ingest": ["post"],
         "/jobs/{job_id}": ["get"],
+        "/videos/{video_id}/tracks/{track_id}/clip": ["get"],
+        "/clips/{name}": ["get"],
     }
     comps = schema["components"]["schemas"]
 
@@ -193,6 +200,7 @@ def test_openapi_contract(client):
         "alpha",
         "video_ids",
         "cameras",
+        "clip",
     }
     assert not search_form.get("required")  # photo, description or both: checked in code
     # What /docs pre-fills. Without examples it fills "string" into the description and
@@ -490,3 +498,114 @@ def test_ingest_size_limits(tmp_path):
 
 def test_unknown_job_is_404(client):
     assert client.get("/jobs/does-not-exist").status_code == 404
+
+
+# ---------------------------------------------------------------------- clips
+def read_clip(data: bytes, tmp_path) -> tuple[int, tuple[int, int], str]:
+    """(frames, (width, height), codec) of an MP4 returned by the API."""
+    path = tmp_path / f"clip_{len(data)}.mp4"
+    path.write_bytes(data)
+    cap = cv2.VideoCapture(str(path))
+    fourcc = int(cap.get(cv2.CAP_PROP_FOURCC))
+    codec = "".join(chr((fourcc >> 8 * i) & 0xFF) for i in range(4))
+    size = (int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)), int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)))
+    n = 0
+    while cap.read()[0]:
+        n += 1
+    cap.release()
+    return n, size, codec
+
+
+def test_result_clips_like_the_final_year_pipeline(client, tmp_path):
+    """Upload -> photo search with clip=true -> an H.264 video of exactly the selected frames."""
+    data = video_bytes(tmp_path, BRIGHT, n_frames=24)
+    job = client.post("/ingest", files={"video": ("cam9.avi", data, "video/avi")}).json()
+    done = wait_job(client, job["job_id"])
+    assert done["status"] == "succeeded" and done["result"]["video_stored"] is True
+    vid = job["video_id"]
+    assert next(v for v in client.get("/videos").json() if v["video_id"] == vid)["stored"]
+
+    photo = {"photo": ("q.jpg", jpeg(BRIGHT), "image/jpeg")}
+    body = client.post("/search", files=photo, data={"video_ids": vid, "clip": "true"}).json()
+    assert body["matched"] and body["notes"] == []
+    v = body["videos"][0]
+    assert body["clip_url"] == v["clip_url"] and v["clip_url"].startswith(
+        "http://testserver/clips/"
+    )
+    r = client.get(v["clip_url"])
+    assert r.status_code == 200 and r.headers["content-type"] == "video/mp4"
+    frames, _, codec = read_clip(r.content, tmp_path)
+    assert frames == v["selected_frames"] == 24 and codec in ("avc1", "h264")
+    # time spans: 24 frames at 12 fps
+    top = body["tracks"][0]
+    assert (top["start_frame"], top["end_frame"]) == (1, 24)
+    assert (top["start_s"], top["end_s"]) == (0.08, 2.0)
+    assert v["segments"][0]["start_s"] == 0.08
+
+    # every track has a clip URL: full frame boxed, or the crops only
+    boxed = client.get(top["clip_url"])
+    assert boxed.status_code == 200
+    assert read_clip(boxed.content, tmp_path)[:2] == (24, (64, 48))
+    crop = client.get(top["clip_url"], params={"style": "crop"})
+    assert read_clip(crop.content, tmp_path)[:2] == (24, (128, 256))
+    assert client.get(top["clip_url"], params={"style": "gif"}).status_code == 422
+
+    # a text search with clip=true cuts its top track
+    text = client.post(
+        "/search", data={"description": TARGET_TEXT, "video_ids": vid, "clip": "true"}
+    ).json()
+    assert text["clip_url"] and client.get(text["clip_url"]).status_code == 200
+
+
+def test_clips_need_the_original_video(client, tmp_path):
+    """Videos A and B were indexed without keeping the file: a clear 404, not a crash."""
+    photo = {"photo": ("q.jpg", jpeg(BRIGHT), "image/jpeg")}
+    body = client.post("/search", files=photo, data={"clip": "true"}).json()
+    assert body["matched"] and body["clip_url"] is None
+    assert any("not stored" in n for n in body["notes"])
+    assert body["tracks"][0]["clip_url"] is None
+    r = client.get(f"/videos/{VIDEO_A}/tracks/{TARGET_TRACK}/clip")
+    assert r.status_code == 404 and "POST /ingest" in r.json()["detail"]
+    assert client.get("/videos/ffffffffffffffff/tracks/1/clip").status_code == 404
+    assert client.get("/clips/nope.mp4").status_code == 404
+    assert client.get("/clips/..%2F..%2Fsecrets.mp4").status_code == 404
+
+
+def test_re_uploading_an_indexed_video_stores_it_for_clips(tmp_path):
+    svc = build_service("memory", tmp_path)
+    with TestClient(create_app(svc)) as c:
+        data = video_bytes(tmp_path, 120, n_frames=6)
+        first = c.post("/ingest", files={"video": ("a.avi", data, "video/avi")}).json()
+        wait_job(c, first["job_id"])
+        stored = svc.video_file(first["video_id"])
+        assert stored is not None
+        stored.unlink()  # like the Week 2 index: indexed, original not on the server
+        again = c.post("/ingest", files={"video": ("a.avi", data, "video/avi")}).json()
+        assert again["result"]["skipped"] and again["result"]["video_stored"]
+        assert svc.video_file(first["video_id"]) is not None
+        assert c.get(f"/videos/{first['video_id']}/tracks/1/clip").status_code == 200
+
+
+def test_keep_videos_false_stores_no_footage(tmp_path):
+    svc = build_service("memory", tmp_path, keep_videos=False)
+    with TestClient(create_app(svc)) as c:
+        data = video_bytes(tmp_path, 140, n_frames=6)
+        job = c.post("/ingest", files={"video": ("a.avi", data, "video/avi")}).json()
+        done = wait_job(c, job["job_id"])
+        assert done["status"] == "succeeded" and done["result"]["video_stored"] is False
+        assert not (tmp_path / "up").exists() or not any((tmp_path / "up").iterdir())
+        r = c.get(f"/videos/{job['video_id']}/tracks/1/clip")
+        assert r.status_code == 404
+
+
+def test_an_unwritable_video_dir_does_not_break_ingest(tmp_path):
+    blocker = tmp_path / "not-a-dir"
+    blocker.write_text("a file where the video folder should be")
+    svc = build_service("memory", tmp_path, video_dir=blocker / "videos", clip_dir=blocker / "c")
+    with TestClient(create_app(svc)) as c:
+        data = video_bytes(tmp_path, 160, n_frames=6)
+        job = c.post("/ingest", files={"video": ("a.avi", data, "video/avi")}).json()
+        done = wait_job(c, job["job_id"])
+        assert done["status"] == "succeeded" and done["result"]["video_stored"] is False
+        again = c.post("/ingest", files={"video": ("a.avi", data, "video/avi")})
+        assert again.status_code == 202 and again.json()["result"]["video_stored"] is False

@@ -247,3 +247,16 @@ def test_publish_collects_only_files_that_match_the_manifest(tmp_path):
     (models / "osnet.pth").write_bytes(b"tampered")
     _, problems = collect(m, models, index)
     assert any("differs" in p for p in problems)
+
+
+def test_store_videos_keeps_originals_under_their_video_id(tmp_path, monkeypatch, capsys):
+    from person_search.index.points import video_fingerprint
+
+    src = tmp_path / "case" / "test_video.MP4"
+    src.parent.mkdir()
+    src.write_bytes(b"not really a video, but hashed the same way")
+    monkeypatch.setenv("PS_API__VIDEO_DIR", str(tmp_path / "videos"))
+    assert main(["store-videos", str(src)]) == 0
+    stored = tmp_path / "videos" / f"{video_fingerprint(src)}.mp4"
+    assert stored.read_bytes() == src.read_bytes()
+    assert main(["store-videos", str(src)]) == 0  # again: nothing to do

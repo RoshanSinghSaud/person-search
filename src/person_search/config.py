@@ -115,6 +115,14 @@ class ApiSettings(BaseModel):
     upload_dir: Path = Field(
         Path("data/uploads"), description="uploaded videos wait here until ingested"
     )
+    video_dir: Path = Field(
+        Path("data/videos"), description="indexed videos, kept to cut result clips from"
+    )
+    clip_dir: Path = Field(Path("data/clips"), description="rendered result clips (a cache)")
+    keep_videos: bool = Field(
+        True, description="keep each indexed video; false = no clips, footage not stored"
+    )
+    max_cached_clips: int = Field(200, ge=1)
     max_photo_mb: float = Field(10.0, gt=0)
     max_video_mb: float = Field(500.0, gt=0)
     max_pending_jobs: int = Field(

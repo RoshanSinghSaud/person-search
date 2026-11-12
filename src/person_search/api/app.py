@@ -19,6 +19,7 @@ from fastapi import FastAPI, Request, Response
 from fastapi.responses import JSONResponse
 
 from person_search import __version__
+from person_search.api.clips import ClipError
 from person_search.api.jobs import JobRunner, QueueFullError
 from person_search.api.routes import MB, router
 from person_search.api.service import SearchService, build_service
@@ -77,6 +78,10 @@ def create_app(service: SearchService | None = None, settings: Settings | None =
     @app.exception_handler(VideoReadError)
     async def bad_input(_: Request, exc: Exception) -> JSONResponse:
         return JSONResponse({"detail": str(exc)}, 400)
+
+    @app.exception_handler(ClipError)
+    async def no_clip(_: Request, exc: Exception) -> JSONResponse:
+        return JSONResponse({"detail": str(exc)}, 404)
 
     @app.exception_handler(QueueFullError)
     async def queue_full(_: Request, exc: Exception) -> JSONResponse:

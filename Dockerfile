@@ -57,6 +57,8 @@ ENV PATH=/opt/venv/bin:$PATH \
     PS_IRRA__WEIGHTS=/data/models/irra_v1.pth \
     PS_API__INDEX_PATH=/data/index \
     PS_API__UPLOAD_DIR=/data/uploads \
+    PS_API__VIDEO_DIR=/data/videos \
+    PS_API__CLIP_DIR=/data/clips \
     PS_ASSETS__MANIFEST=/app/configs/assets.yaml \
     PORT=8000
 VOLUME ["/data"]
