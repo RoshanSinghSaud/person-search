@@ -119,20 +119,40 @@ def search(
         UploadFile | None,
         File(description="photo of the person (OSNet; the paper's threshold decides matches)"),
     ] = None,
+    # The `examples` are what the /docs page pre-fills: without them it fills
+    # "string" into every text and list field, which silently changes the query.
     description: Annotated[
         str | None,
-        Form(max_length=MAX_DESCRIPTION, description="what the person looks like (IRRA)"),
+        Form(
+            max_length=MAX_DESCRIPTION,
+            description="what the person looks like (IRRA); leave empty for a photo-only search",
+            examples=[""],
+        ),
     ] = None,
-    top_k: Annotated[int, Form(ge=1, le=MAX_TOP_K, description="tracks to return")] = 5,
+    top_k: Annotated[
+        int, Form(ge=1, le=MAX_TOP_K, description="tracks to return", examples=[5])
+    ] = 5,
     alpha: Annotated[
         float | None,
-        Form(ge=0.0, le=1.0, description="photo + description only: weight of the photo score"),
+        Form(
+            ge=0.0,
+            le=1.0,
+            description="photo + description only: weight of the photo score (default 0.5)",
+            examples=[0.5],
+        ),
     ] = None,
     video_ids: Annotated[
         list[str] | None,
-        Form(description="search only these videos (repeat the field or comma-separate)"),
+        Form(
+            description="search only these videos, by video_id from GET /videos "
+            "(repeat the field or comma-separate); empty = all",
+            examples=[[]],
+        ),
     ] = None,
-    cameras: Annotated[list[str] | None, Form(description="search only these cameras")] = None,
+    cameras: Annotated[
+        list[str] | None,
+        Form(description="search only these camera labels; empty = all", examples=[[]]),
+    ] = None,
 ) -> SearchResponse:
     """Find a person by **photo**, **description** or **both**.
 
@@ -149,6 +169,11 @@ def search(
     flt = None
     vids, cams = _split(video_ids), _split(cameras)
     if vids or cams:
+        errors = service.filter_errors(vids, cams)
+        if errors:
+            if "string" in (vids or ()) + (cams or ()):
+                errors.append("the /docs page pre-fills list fields with 'string': clear them")
+            raise HTTPException(422, "; ".join(errors))
         flt = SearchFilter(video_ids=vids, cameras=cams)
     result = service.search(photo=image, description=text, top_k=top_k, alpha=alpha, flt=flt)
     log.info(

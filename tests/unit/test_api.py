@@ -195,6 +195,12 @@ def test_openapi_contract(client):
         "cameras",
     }
     assert not search_form.get("required")  # photo, description or both: checked in code
+    # What /docs pre-fills. Without examples it fills "string" into the description and
+    # the lists, which silently turns a photo search into photo + "string" over no camera.
+    props = search_form["properties"]
+    assert props["description"]["examples"] == [""]
+    assert props["alpha"]["examples"] == [0.5]
+    assert props["video_ids"]["examples"] == props["cameras"]["examples"] == [[]]
     ingest_form = form("/ingest")
     assert set(ingest_form["properties"]) == {"video", "camera"}
     assert ingest_form["required"] == ["video"]
@@ -301,14 +307,34 @@ def test_filters_restrict_the_search(client):
     data = {"description": TARGET_TEXT, "top_k": "10"}
     only_b = client.post("/search", data={**data, "video_ids": VIDEO_B}).json()
     assert only_b["tracks"] and {t["video_id"] for t in only_b["tracks"]} == {VIDEO_B}
-    by_camera = client.post("/search", data={**data, "cameras": "B,C"}).json()
+    by_camera = client.post("/search", data={**data, "cameras": "B"}).json()
     assert {t["camera"] for t in by_camera["tracks"]} == {"B"}
+    both = client.post("/search", data={**data, "cameras": ["A", "B"]}).json()
+    assert {t["camera"] for t in both["tracks"]} == {"A", "B"}
     photo = client.post(
         "/search",
         files={"photo": ("q.jpg", jpeg(BRIGHT), "image/jpeg")},
-        data={"video_ids": [VIDEO_B, "nope"]},
+        data={"video_ids": VIDEO_B},
     ).json()
     assert photo["matched"] is False and {v["video_id"] for v in photo["videos"]} <= {VIDEO_B}
+
+
+@pytest.mark.parametrize(
+    ("data", "names"),
+    [
+        ({"cameras": "string"}, ["'string'", "A, B", "pre-fills"]),  # the /docs placeholder
+        ({"cameras": "B,C"}, ["unknown cameras ['C']", "A, B"]),
+        ({"video_ids": [VIDEO_B, "nope"]}, ["unknown video_ids ['nope']", VIDEO_A, "GET /videos"]),
+        ({"video_ids": "nope", "cameras": "Z"}, ["video_ids ['nope']", "cameras ['Z']"]),
+    ],
+)
+def test_unknown_filter_values_are_a_422_naming_the_valid_ones(client, data, names):
+    """A typo in a filter must not look like "nobody found" (empty 200)."""
+    r = client.post("/search", data={"description": TARGET_TEXT, **data})
+    assert r.status_code == 422, r.text
+    detail = r.json()["detail"]
+    for name in names:
+        assert name in detail, detail
 
 
 def test_search_flt_equals_the_service_filter(service):

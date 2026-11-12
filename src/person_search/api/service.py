@@ -51,6 +51,11 @@ def _ms(seconds: float) -> float:
     return round(seconds * 1000, 1)
 
 
+def _preview(values: list[str], n: int = 10) -> str:
+    more = f" (+{len(values) - n} more)" if len(values) > n else ""
+    return ", ".join(values[:n]) + more if values else "(none)"
+
+
 class SearchService:
     def __init__(
         self,
@@ -104,6 +109,24 @@ class SearchService:
             VideoOut(video_id=vid, video=v.get("video"), camera=v.get("camera"), points=v["points"])
             for vid, v in sorted(self._catalog().items(), key=lambda kv: str(kv[1].get("video")))
         ]
+
+    def filter_errors(
+        self, video_ids: tuple[str, ...] | None, cameras: tuple[str, ...] | None
+    ) -> list[str]:
+        """What a filter names that the index does not hold (a typo would otherwise
+        return an empty result that looks like "nobody found")."""
+        catalog = self._catalog()
+        errors = []
+        unknown = [v for v in video_ids or () if v not in catalog]
+        if unknown:
+            errors.append(
+                f"unknown video_ids {unknown}; indexed: {_preview(sorted(catalog))} (GET /videos)"
+            )
+        known = sorted({str(v.get("camera")) for v in catalog.values()})
+        unknown = [c for c in cameras or () if c not in known]
+        if unknown:
+            errors.append(f"unknown cameras {unknown}; indexed: {_preview(known)}")
+        return errors
 
     def health(self, jobs: dict[str, int]) -> HealthResponse:
         return HealthResponse(
