@@ -163,15 +163,43 @@ api-index: ## copy the Week 2 index (the 4 test videos) to $(API_INDEX), for the
 	@test ! -e $(API_INDEX) || { echo "$(API_INDEX) already exists"; exit 1; }
 	mkdir -p $(dir $(API_INDEX)) && cp -R $(INDEX_DIR) $(API_INDEX)
 
+.PHONY: api-videos
+api-videos: ## keep the 4 test videos for the API's result clips (data/videos, hard links)
+	$(PY) -m person_search.cli store-videos $(foreach c,$(CASES),$(CASES_DIR)/$(c)/test_video.mp4)
+
 .PHONY: serve
-serve: ## run the API on :$(PORT); models load first (~15 s), docs at /docs
-	PS_API__INDEX_PATH=$(API_INDEX) uv run --group serve uvicorn person_search.api.app:create_app \
-		--factory --host 0.0.0.0 --port $(PORT)
+serve: ## run the API on :$(PORT) (fetches missing assets first); models load in ~15 s, docs at /docs
+	PS_API__INDEX_PATH=$(API_INDEX) uv run --group serve python -m person_search.cli serve \
+		--host 0.0.0.0 --port $(PORT)
 
 .PHONY: smoke-api
 smoke-api: ## check a running API (make serve) over HTTP against Week 2's numbers (CLIP=video to ingest)
 	$(PY) scripts/smoke_api.py --cases-dir $(CASES_DIR) $(if $(CLIP),--ingest $(CLIP)) \
 		--out $(LEGACY_DIR)/runs/week3/api_smoke.json
+
+# ---------------------------------------------------------------- Step 3: Docker
+IMAGE           ?= person-search:latest
+DOCKER_PLATFORM ?=
+
+.PHONY: publish-assets
+publish-assets: ## once: upload YOLO, OSNet, INT8 IRRA + the Week 2 index to a private HF repo (REPO=<hf-user>/person-search-assets)
+	@test -n "$(REPO)" || { echo "usage: make publish-assets REPO=<hf-user>/person-search-assets"; exit 1; }
+	$(PY) scripts/publish_assets.py --repo $(REPO) --models-dir models --index $(INDEX_DIR)
+
+.PHONY: docker-build
+docker-build: ## build the CPU-only image $(IMAGE) for this machine (DOCKER_PLATFORM=linux/amd64 = the server's)
+	docker build $(if $(DOCKER_PLATFORM),--platform $(DOCKER_PLATFORM)) -t $(IMAGE) .
+
+.PHONY: docker-run
+docker-run: ## run $(IMAGE) on :$(PORT); the first start downloads weights + index into the ps-data volume
+	docker run --rm -p $(PORT):8000 -v ps-data:/data \
+		-e PS_ASSETS__REPO -e PS_ASSETS__REVISION -e HF_TOKEN $(IMAGE)
+
+.PHONY: docker-run-local
+docker-run-local: ## run $(IMAGE) on :$(PORT) with ./models and $(API_INDEX) mounted: nothing to download
+	@mkdir -p data/videos
+	docker run --rm -p $(PORT):8000 -v "$(CURDIR)/models:/data/models:ro" \
+		-v "$(CURDIR)/$(API_INDEX):/data/index" -v "$(CURDIR)/data/videos:/data/videos" $(IMAGE)
 
 .PHONY: clean
 clean: ## remove caches and outputs

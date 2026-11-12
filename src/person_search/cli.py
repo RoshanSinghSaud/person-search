@@ -8,6 +8,9 @@ photo         photo query on one video (reprocesses the video, the legacy path)
 text          text query on one video, ranked tracks
 eval-frames   frame-level P/R/F1 from the test cases' evaluation.json files
 golden        run the photo pipeline on the test cases and compare with golden data
+fetch-assets  download the weights and index the service needs (configs/assets.yaml)
+store-videos  keep video originals so the API can cut result clips from them
+serve         fetch missing assets, then run the HTTP API
 """
 
 from __future__ import annotations
@@ -15,6 +18,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import os
 import platform
 import sys
 from pathlib import Path
@@ -144,6 +148,60 @@ def _cmd_golden(args: argparse.Namespace) -> int:
     return 1 if failures else 0
 
 
+def _cmd_fetch_assets(args: argparse.Namespace) -> int:
+    from person_search.assets import AssetError, ensure_assets, load_manifest, plan_assets
+
+    settings = load_settings(args.config)
+    if args.dry_run:
+        plan = plan_assets(settings, load_manifest(settings.assets.manifest))
+        print(json.dumps(plan.as_dict(), indent=2))
+        return 1 if plan.problems else 0
+    try:
+        ensure_assets(settings)
+    except AssetError as exc:
+        log.error("%s", exc)
+        return 2
+    return 0
+
+
+def _cmd_store_videos(args: argparse.Namespace) -> int:
+    """Keep originals of already indexed videos, so the API can cut result clips from them."""
+    import shutil
+
+    from person_search.index.points import video_fingerprint
+
+    video_dir = load_settings(args.config).api.video_dir
+    video_dir.mkdir(parents=True, exist_ok=True)
+    for src in args.videos:
+        vid = video_fingerprint(src)
+        dest = video_dir / f"{vid}{src.suffix.lower()}"
+        if not dest.exists():
+            try:
+                dest.hardlink_to(src)  # no second copy on the same disk
+            except OSError:
+                shutil.copy2(src, dest)
+        print(f"{vid}  {src}  -> {dest}")
+    return 0
+
+
+def _cmd_serve(args: argparse.Namespace) -> int:
+    import uvicorn
+
+    from person_search.api.app import create_app
+    from person_search.assets import AssetError, ensure_assets
+
+    settings = load_settings(args.config)
+    if not args.no_fetch:
+        try:
+            ensure_assets(settings)
+        except AssetError as exc:
+            log.error("%s", exc)
+            return 2
+    # One worker: Qdrant local mode locks its folder, and models load per worker.
+    uvicorn.run(create_app(settings=settings), host=args.host, port=args.port, log_config=None)
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         prog="person-search",
@@ -193,6 +251,20 @@ def build_parser() -> argparse.ArgumentParser:
         help="golden data for this platform (default: tests/golden/data/<platform>)",
     )
     sg.set_defaults(func=_cmd_golden)
+
+    sf = sub.add_parser("fetch-assets", help="download missing weights and index (assets.yaml)")
+    sf.add_argument("--dry-run", action="store_true", help="print what would be downloaded")
+    sf.set_defaults(func=_cmd_fetch_assets)
+
+    sk = sub.add_parser("store-videos", help="keep video originals for the API's result clips")
+    sk.add_argument("videos", type=Path, nargs="+")
+    sk.set_defaults(func=_cmd_store_videos)
+
+    sv = sub.add_parser("serve", help="fetch missing assets, then run the API (one worker)")
+    sv.add_argument("--host", default="127.0.0.1")
+    sv.add_argument("--port", type=int, default=int(os.environ.get("PORT", "8000")))
+    sv.add_argument("--no-fetch", action="store_true", help="do not download missing assets")
+    sv.set_defaults(func=_cmd_serve)
     return p
 
 

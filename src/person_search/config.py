@@ -115,11 +115,29 @@ class ApiSettings(BaseModel):
     upload_dir: Path = Field(
         Path("data/uploads"), description="uploaded videos wait here until ingested"
     )
+    video_dir: Path = Field(
+        Path("data/videos"), description="indexed videos, kept to cut result clips from"
+    )
+    clip_dir: Path = Field(Path("data/clips"), description="rendered result clips (a cache)")
+    keep_videos: bool = Field(
+        True, description="keep each indexed video; false = no clips, footage not stored"
+    )
+    max_cached_clips: int = Field(200, ge=1)
     max_photo_mb: float = Field(10.0, gt=0)
     max_video_mb: float = Field(500.0, gt=0)
     max_pending_jobs: int = Field(
         4, ge=1, description="queued + running ingest jobs; more and /ingest answers 429"
     )
+
+
+class AssetsSettings(BaseModel):
+    """Where missing weights and indexes come from (``person_search.assets``, decision 0013)."""
+
+    manifest: Path = Path("configs/assets.yaml")
+    repo: str | None = Field(
+        None, description="Hugging Face repo with the published assets; overrides the manifest's"
+    )
+    revision: str | None = Field(None, description="commit or branch of that repo")
 
 
 class Settings(BaseSettings):
@@ -142,6 +160,7 @@ class Settings(BaseSettings):
     scoring: ScoringSettings = ScoringSettings()
     fusion: FusionSettings = FusionSettings()
     api: ApiSettings = ApiSettings()
+    assets: AssetsSettings = AssetsSettings()
 
     @field_validator("device")
     @classmethod

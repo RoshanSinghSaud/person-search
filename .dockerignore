@@ -1,0 +1,10 @@
+# Allow-list: the image needs only what builds the package and its configs.
+# Weights, data and the legacy checkouts must never reach the build context.
+*
+!pyproject.toml
+!uv.lock
+!README.md
+!src/
+!configs/
+**/__pycache__
+**/*.py[cod]

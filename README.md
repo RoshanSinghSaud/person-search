@@ -6,15 +6,17 @@ final-year system into a production service: index once, search many.
 
 [![CI](https://github.com/RoshanSinghSaud/person-search/actions/workflows/ci.yml/badge.svg)](https://github.com/RoshanSinghSaud/person-search/actions/workflows/ci.yml)
 
-> **Status: Weeks 1-2 done; Week 3 steps 1 (IRRA INT8) and 2 (web API) done.** Week 1 extracted both legacy repos into modules
+> **Status: Weeks 1-2 done; Week 3 steps 1-3 (IRRA INT8, web API, Docker) done.** Week 1 extracted both legacy repos into modules
 > with parity and golden tests ([AUDIT.md](AUDIT.md)). Week 2 added evaluation
 > for photo and text queries, a Qdrant index holding both vectors, indexed
 > photo, text and hybrid search (exactly equal to a full scan), the first
 > end-to-end text numbers and per-stage timings
 > ([docs/results/week2.md](docs/results/week2.md)). Week 3 put IRRA's image
-> tower in ONNX INT8 and the search behind a FastAPI service
-> ([docs/results/week3_api.md](docs/results/week3_api.md)). Docker and
-> deployment follow the plan.
+> tower in ONNX INT8, the search behind a FastAPI service
+> ([docs/results/week3_api.md](docs/results/week3_api.md)) and the service in
+> a CPU-only Docker image that downloads its weights and index at start
+> ([docs/results/week3_docker.md](docs/results/week3_docker.md)). Deployment
+> follows the plan.
 
 ## How it works
 
@@ -50,7 +52,7 @@ src/person_search/
   search/            photo.py text.py hybrid.py results.py (in memory); indexed.py (over the index)
   index/             base.py (VectorIndex) qdrant.py (local mode or server) memory.py (fake) points.py
   eval/              frame_metrics.py reid.py golden.py text_e2e.py (Hit@k) campus.py gate_set.py gate.py
-  api/               app.py (FastAPI, lifespan model loading) routes.py service.py jobs.py schemas.py
+  api/               app.py (FastAPI, lifespan model loading) routes.py service.py jobs.py schemas.py clips.py
 configs/             report_run.yaml (default = repo 2's final code) paper.yaml models.yaml (model versions)
 scripts/             build_index eval_search gate_set eval_models profile_ingest week2_report fetch_weights
 tests/unit/          unit tests, no weights needed (CI)
@@ -58,8 +60,10 @@ tests/parity/        new modules vs legacy code (make parity)
 tests/golden/        pipeline.run vs repo 2 on the 4 test cases (make golden)
 tools/legacy/        Day 2 harness, golden builder, drawn-box extractor (import legacy by path)
 tools/analysis/      scoring sweeps, track contact sheets, label sensitivity
-docs/decisions/      one note per decision (0007-0010: Week 2; 0011-0012: Week 3)
-docs/results/        week2.md, week3_onnx.md, week3_api.md, generated from the run outputs
+configs/assets.yaml  where the service downloads missing weights and indexes from (SHA-256 pinned)
+Dockerfile           CPU-only image: uv.lock -> venv, assets fetched at start into /data
+docs/decisions/      one note per decision (0007-0010: Week 2; 0011-0014: Week 3)
+docs/results/        week2.md, week3_onnx.md, week3_api.md, week3_docker.md, from the run outputs
 ```
 
 ## Quick start
@@ -107,6 +111,7 @@ uv run python scripts/week2_report.py   # -> docs/results/week2.md
 
 ```bash
 make api-index          # copy the Week 2 index (4 test videos) to data/index
+make api-videos         # keep the 4 test videos, so results come with a video clip
 make serve              # http://localhost:8000/docs; models load first (~15 s)
 ```
 
@@ -117,6 +122,10 @@ curl -F description="a man in a white shirt and dark trousers" -F top_k=5 http:/
 curl -F photo=@query.jpg -F description="white shirt, cap" -F alpha=0.5 http://localhost:8000/search
 curl -F description="..." -F video_ids=fce3e914169cac08 http://localhost:8000/search  # one video
 
+# the video of the person, like the final-year pipeline's output: open clip_url in a browser
+curl -F photo=@query.jpg -F video_ids=bed83b0fa58e9925 -F clip=true http://localhost:8000/search
+curl -o track7.mp4 "http://localhost:8000/videos/bed83b0fa58e9925/tracks/7/clip?style=crop"
+
 # index a new video: 202 + a job at once, then poll the job
 curl -F video=@clip.mp4 -F camera="gate 2" http://localhost:8000/ingest
 curl http://localhost:8000/jobs/<job_id>        # queued -> running (progress) -> succeeded
@@ -126,14 +135,43 @@ curl http://localhost:8000/videos               # indexed videos and their video
 
 | Endpoint | What it does |
 |---|---|
-| `POST /search` | `photo` and/or `description` (multipart). Always returns ranked `tracks`; a photo query also returns the paper's decision per video: `matched`, accepted tracks, frame segments |
-| `POST /ingest` | `video` (+ `camera`). **202** with a job and `Location: /jobs/{id}`; one video is ingested at a time, 429 beyond 4 pending. An already indexed video returns `skipped: true` |
+| `POST /search` | `photo` and/or `description` (multipart). Always returns ranked `tracks` with when they are on screen (`start_s`, `end_s`) and a `clip_url`; a photo query also returns the paper's decision per video: `matched`, accepted tracks, frame segments. `clip=true` adds a ready video of the best result (`clip_url`) |
+| `GET /videos/{video_id}/tracks/{track_id}/clip` | an H.264 MP4 of every frame of one track: `style=boxed` (full frame, person boxed) or `style=crop` (the person only) |
+| `GET /clips/{name}` | a clip made by `clip=true` |
+| `POST /ingest` | `video` (+ `camera`). **202** with a job and `Location: /jobs/{id}`; one video is ingested at a time, 429 beyond 4 pending. The original is kept for clips (`PS_API__KEEP_VIDEOS=false` to not). An already indexed video returns `skipped: true` (and is kept) |
 | `GET /jobs/{id}` | `queued` / `running` (with `progress`) / `succeeded` (points, tracks, seconds) / `failed` (error) |
 | `GET /health` | model versions in use (`osnet-v1`, `irra-v1`), index collection and size, job counts |
 
 The service refuses to start if the index folder was built for other model
 versions than the ones it loads (an empty folder gets a new index). Design and limits: decision 0012. `make smoke-api`
 checks a running server against the Week 2 numbers.
+
+### Run it in Docker
+
+The image holds the code and CPU-only PyTorch; on start it downloads whatever
+weights and index are missing into `/data` (`configs/assets.yaml`, SHA-256
+checked), then serves on port 8000. Keep `/data` on a volume and later starts
+take ~10 s.
+
+```bash
+make docker-build                    # CPU-only image for this machine (~3 min the first time)
+
+# a) no Hugging Face needed: mount ./models and the index you already have
+make api-index api-videos            # once: data/index and data/videos from Week 2
+make docker-run-local                # http://localhost:8000/docs
+
+# b) the way the server runs it: everything downloaded at start
+make publish-assets REPO=<hf-user>/person-search-assets   # once, needs a write token
+export PS_ASSETS__REPO=<hf-user>/person-search-assets HF_TOKEN=hf_...   # a read token is enough
+make docker-run                      # first start ~1.1 GB download, then cached in the ps-data volume
+```
+
+`make publish-assets` uploads YOLO, OSNet, the INT8 IRRA tower and the Week 2
+index to a private repo, after checking each file against the manifest, and
+prints the commit to pin as `revision` in `configs/assets.yaml`. The IRRA
+weights come from the IRRA team's public repo. On an Apple Silicon Mac the
+image builds natively (arm64); `make docker-build DOCKER_PLATFORM=linux/amd64`
+builds exactly the server's image (slower, emulated). Design: decision 0013.
 
 Every setting can be overridden with `PS_<SECTION>__<FIELD>`, e.g.
 `PS_SCORING__BASE_THRESHOLD=0.7`. See `.env.example`.
@@ -300,6 +338,18 @@ With the real models over HTTP, the API gives the same answers as Week 2:
 Searching all videos at once applies the paper's threshold per video, so a
 photo can also "match" in other videos (AUDIT.md F29); pass `video_ids` or
 `cameras` when you know where to look.
+
+### Week 3, step 3: Docker
+
+Full tables: [docs/results/week3_docker.md](docs/results/week3_docker.md); decision 0013.
+
+| | |
+|---|---|
+| Image | 603 MB compressed, torch `2.5.0+cpu`, no CUDA; amd64 and arm64 |
+| Cold start (empty `/data`, 1.1 GB to download and verify) | 37 s to `/health` |
+| Warm restart (volume kept) | 9 s, no download; ingested videos kept |
+| Answers inside the container | photo 4/4, text 12/12, identical to Week 2 |
+| Memory | 2.3 GB idle |
 
 ## Credits
 

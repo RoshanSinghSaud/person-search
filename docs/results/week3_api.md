@@ -61,3 +61,18 @@ so a photo also "matches" in other videos:
 
 Not yet checked whether these are lookalikes or the same students walking
 through another camera's view.
+
+## Result clips (decision 0014)
+
+Test case 4 with the real models, its video stored with `make api-videos`:
+
+| Request | Result |
+|---|---|
+| Photo query, `video_ids` = case 4, `clip=true` | `clip_url`: H.264, 960 x 540, 12 fps, **62 frames = the golden run's selected frames** (tracks 7 and 42; 1.2-4.9 s and 27.7-29.4 s); made in 3.2 s |
+| `GET /videos/{id}/tracks/7/clip?style=crop` | 52 crops of track 7, 128 x 256, 0.6 s; 4 ms when cached |
+| Description, `clip=true` | the top track's clip, 3.0 s |
+| Same photo query in the Docker image | identical: 62 frames, H.264; the case 4 upload was stored without being indexed again |
+
+The crops of track 7 show the person in the query photo (grey jacket, dark
+T-shirt, light jeans, backpack). Track 42, the second accepted track, is the
+different person already recorded as AUDIT.md F19, and the clip shows it.
