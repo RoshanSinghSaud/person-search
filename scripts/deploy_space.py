@@ -223,15 +223,20 @@ def wait_for_commit(api: HfApi, space: str, sha: str, timeout_s: float) -> str:
     return "TIMEOUT"
 
 
-def main() -> int:
+def main() -> int:  # noqa: PLR0911 (one exit code per failure, in order)
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawTextHelpFormatter)
     ap.add_argument("--sync-secrets", action="store_true", help="rewrite the Space's secrets")
     ap.add_argument("--wait-minutes", type=float, default=45, help="build + start budget")
     ap.add_argument("--dry-run", action="store_true", help="stage the files, upload nothing")
     args = ap.parse_args()
 
+    def env(name: str) -> str:
+        # A pasted secret often ends in a newline: HTTP headers refuse it ("Illegal header
+        # value"), and a key with one never matches what the user types.
+        return os.environ.get(name, "").strip()
+
     try:
-        token = os.environ.get("HF_TOKEN") or None
+        token = env("HF_TOKEN") or None
         if not token and not args.dry_run:
             raise SetupError("HF_TOKEN (write token) is not set")
         tracked = git("ls-files").splitlines()
@@ -245,11 +250,11 @@ def main() -> int:
 
         api = HfApi(token=token)
         owner = api.whoami()["name"] if token else "<hf-user>"
-        space = os.environ.get("HF_SPACE") or f"{owner}/person-search"
-        assets_repo = os.environ.get("PS_ASSETS__REPO") or f"{owner}/person-search-assets"
+        space = env("HF_SPACE") or f"{owner}/person-search"
+        assets_repo = env("PS_ASSETS__REPO") or f"{owner}/person-search-assets"
         wanted_secrets = {
-            "HF_TOKEN": os.environ.get("HF_SPACE_TOKEN", ""),
-            "PS_API__API_KEY": os.environ.get("PS_API_KEY", ""),
+            "HF_TOKEN": env("HF_SPACE_TOKEN"),
+            "PS_API__API_KEY": env("PS_API_KEY"),
         }
         if len(wanted_secrets["PS_API__API_KEY"]) < 16 and not args.dry_run:
             raise SetupError("PS_API_KEY must be set, >= 16 characters (openssl rand -hex 24)")
@@ -270,7 +275,11 @@ def main() -> int:
         return 0
 
     # 1-2. the Space and its settings (only what changed: every change restarts it)
-    url = api.create_repo(space, repo_type="space", space_sdk="docker", exist_ok=True)
+    try:
+        url = api.create_repo(space, repo_type="space", space_sdk="docker", exist_ok=True)
+    except Exception as e:  # 402: Docker Spaces need PRO (since July 2026); 403: token rights
+        print(f"ERROR: cannot create the Space {space}: {e}", file=sys.stderr)
+        return 2
     print(f"Space: {url}")
     existing_secrets = set(api.get_space_secrets(space))
     if not wanted_secrets["HF_TOKEN"] and "HF_TOKEN" not in existing_secrets:

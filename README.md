@@ -6,7 +6,7 @@ final-year system into a production service: index once, search many.
 
 [![CI](https://github.com/RoshanSinghSaud/person-search/actions/workflows/ci.yml/badge.svg)](https://github.com/RoshanSinghSaud/person-search/actions/workflows/ci.yml)
 
-> **Status: Weeks 1-2 done; Week 3 steps 1-3 (IRRA INT8, web API, Docker) done; step 4 (deploy on every merge to a Hugging Face Space) built, first deploy pending.** Week 1 extracted both legacy repos into modules
+> **Status: Weeks 1-2 done; Week 3 steps 1-3 (IRRA INT8, web API, Docker) done; step 4 (deploy on every merge to a Hugging Face Space) built and parked: since July 2026 Hugging Face runs Docker Spaces for PRO accounts only (decision 0015).** Week 1 extracted both legacy repos into modules
 > with parity and golden tests ([AUDIT.md](AUDIT.md)). Week 2 added evaluation
 > for photo and text queries, a Qdrant index holding both vectors, indexed
 > photo, text and hybrid search (exactly equal to a full scan), the first
@@ -178,7 +178,11 @@ Every setting can be overridden with `PS_<SECTION>__<FIELD>`, e.g.
 
 ### Deploy to a Hugging Face Space
 
-Every push to `main` deploys itself: after the tests and the image build pass,
+> **Parked.** Hugging Face now runs Docker Spaces only for PRO accounts, so the
+> `deploy` job is off until the repository variable `DEPLOY_SPACE` is `true`
+> (decision 0015). Everything below works once the account can host the Space.
+
+With `DEPLOY_SPACE=true`, every push to `main` deploys itself: after the tests and the image build pass,
 the CI job `deploy` uploads the build files to the Space
 `<hf-user>/person-search`, waits until it runs that commit, and checks that
 `/health` reports both models and the index, that a text search answers and

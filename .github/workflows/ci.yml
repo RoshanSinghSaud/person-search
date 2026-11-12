@@ -101,9 +101,13 @@ jobs:
 
   deploy:
     name: deploy to the Hugging Face Space
-    # every push to main (= every merged PR), once the tests and the image build pass
+    # every push to main (= every merged PR), once the tests and the image build pass.
+    # Off until the repository variable DEPLOY_SPACE is "true": since July 2026 Hugging
+    # Face only runs Docker Spaces for PRO accounts (decision 0015, "Parked").
     needs: [checks, docker]
-    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    if: >-
+      github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+      && vars.DEPLOY_SPACE == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 60
     concurrency:
