@@ -52,7 +52,7 @@ src/person_search/
   search/            photo.py text.py hybrid.py results.py (in memory); indexed.py (over the index)
   index/             base.py (VectorIndex) qdrant.py (local mode or server) memory.py (fake) points.py
   eval/              frame_metrics.py reid.py golden.py text_e2e.py (Hit@k) campus.py gate_set.py gate.py
-  api/               app.py (FastAPI, lifespan model loading) routes.py service.py jobs.py schemas.py
+  api/               app.py (FastAPI, lifespan model loading) routes.py service.py jobs.py schemas.py clips.py
 configs/             report_run.yaml (default = repo 2's final code) paper.yaml models.yaml (model versions)
 scripts/             build_index eval_search gate_set eval_models profile_ingest week2_report fetch_weights
 tests/unit/          unit tests, no weights needed (CI)
@@ -62,7 +62,7 @@ tools/legacy/        Day 2 harness, golden builder, drawn-box extractor (import 
 tools/analysis/      scoring sweeps, track contact sheets, label sensitivity
 configs/assets.yaml  where the service downloads missing weights and indexes from (SHA-256 pinned)
 Dockerfile           CPU-only image: uv.lock -> venv, assets fetched at start into /data
-docs/decisions/      one note per decision (0007-0010: Week 2; 0011-0013: Week 3)
+docs/decisions/      one note per decision (0007-0010: Week 2; 0011-0014: Week 3)
 docs/results/        week2.md, week3_onnx.md, week3_api.md, week3_docker.md, from the run outputs
 ```
 
@@ -111,6 +111,7 @@ uv run python scripts/week2_report.py   # -> docs/results/week2.md
 
 ```bash
 make api-index          # copy the Week 2 index (4 test videos) to data/index
+make api-videos         # keep the 4 test videos, so results come with a video clip
 make serve              # http://localhost:8000/docs; models load first (~15 s)
 ```
 
@@ -121,6 +122,10 @@ curl -F description="a man in a white shirt and dark trousers" -F top_k=5 http:/
 curl -F photo=@query.jpg -F description="white shirt, cap" -F alpha=0.5 http://localhost:8000/search
 curl -F description="..." -F video_ids=fce3e914169cac08 http://localhost:8000/search  # one video
 
+# the video of the person, like the final-year pipeline's output: open clip_url in a browser
+curl -F photo=@query.jpg -F video_ids=bed83b0fa58e9925 -F clip=true http://localhost:8000/search
+curl -o track7.mp4 "http://localhost:8000/videos/bed83b0fa58e9925/tracks/7/clip?style=crop"
+
 # index a new video: 202 + a job at once, then poll the job
 curl -F video=@clip.mp4 -F camera="gate 2" http://localhost:8000/ingest
 curl http://localhost:8000/jobs/<job_id>        # queued -> running (progress) -> succeeded
@@ -130,8 +135,10 @@ curl http://localhost:8000/videos               # indexed videos and their video
 
 | Endpoint | What it does |
 |---|---|
-| `POST /search` | `photo` and/or `description` (multipart). Always returns ranked `tracks`; a photo query also returns the paper's decision per video: `matched`, accepted tracks, frame segments |
-| `POST /ingest` | `video` (+ `camera`). **202** with a job and `Location: /jobs/{id}`; one video is ingested at a time, 429 beyond 4 pending. An already indexed video returns `skipped: true` |
+| `POST /search` | `photo` and/or `description` (multipart). Always returns ranked `tracks` with when they are on screen (`start_s`, `end_s`) and a `clip_url`; a photo query also returns the paper's decision per video: `matched`, accepted tracks, frame segments. `clip=true` adds a ready video of the best result (`clip_url`) |
+| `GET /videos/{video_id}/tracks/{track_id}/clip` | an H.264 MP4 of every frame of one track: `style=boxed` (full frame, person boxed) or `style=crop` (the person only) |
+| `GET /clips/{name}` | a clip made by `clip=true` |
+| `POST /ingest` | `video` (+ `camera`). **202** with a job and `Location: /jobs/{id}`; one video is ingested at a time, 429 beyond 4 pending. The original is kept for clips (`PS_API__KEEP_VIDEOS=false` to not). An already indexed video returns `skipped: true` (and is kept) |
 | `GET /jobs/{id}` | `queued` / `running` (with `progress`) / `succeeded` (points, tracks, seconds) / `failed` (error) |
 | `GET /health` | model versions in use (`osnet-v1`, `irra-v1`), index collection and size, job counts |
 
@@ -150,7 +157,7 @@ take ~10 s.
 make docker-build                    # CPU-only image for this machine (~3 min the first time)
 
 # a) no Hugging Face needed: mount ./models and the index you already have
-make api-index                       # once: data/index from the Week 2 index
+make api-index api-videos            # once: data/index and data/videos from Week 2
 make docker-run-local                # http://localhost:8000/docs
 
 # b) the way the server runs it: everything downloaded at start
