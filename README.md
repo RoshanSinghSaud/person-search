@@ -6,7 +6,7 @@ final-year system into a production service: index once, search many.
 
 [![CI](https://github.com/RoshanSinghSaud/person-search/actions/workflows/ci.yml/badge.svg)](https://github.com/RoshanSinghSaud/person-search/actions/workflows/ci.yml)
 
-> **Status: Weeks 1-2 done; Week 3 steps 1-3 (IRRA INT8, web API, Docker) done.** Week 1 extracted both legacy repos into modules
+> **Status: Weeks 1-2 done; Week 3 steps 1-3 (IRRA INT8, web API, Docker) done; step 4 (deploy on every merge to a Hugging Face Space) built, first deploy pending.** Week 1 extracted both legacy repos into modules
 > with parity and golden tests ([AUDIT.md](AUDIT.md)). Week 2 added evaluation
 > for photo and text queries, a Qdrant index holding both vectors, indexed
 > photo, text and hybrid search (exactly equal to a full scan), the first
@@ -175,6 +175,27 @@ builds exactly the server's image (slower, emulated). Design: decision 0013.
 
 Every setting can be overridden with `PS_<SECTION>__<FIELD>`, e.g.
 `PS_SCORING__BASE_THRESHOLD=0.7`. See `.env.example`.
+
+### Deploy to a Hugging Face Space
+
+Every push to `main` deploys itself: after the tests and the image build pass,
+the CI job `deploy` uploads the build files to the Space
+`<hf-user>/person-search`, waits until it runs that commit, and checks that
+`/health` reports both models and the index, that a text search answers and
+that an upload without the API key is refused. The API is then at
+`https://<hf-user>-person-search.hf.space/docs`. One-time setup:
+
+1. `make publish-assets REPO=<hf-user>/person-search-assets` (write token; see above).
+2. In the GitHub repo, *Settings -> Secrets and variables -> Actions*, add the
+   secrets `HF_TOKEN` (Hugging Face **write** token), `HF_SPACE_TOKEN` (a **read**
+   token: the Space uses it to download the private assets) and `PS_API_KEY`
+   (`openssl rand -hex 24`; `POST /ingest` on the Space needs it in `X-API-Key`).
+
+The Space is created on the first deploy. To redeploy by hand: *Actions -> CI ->
+Run workflow* on `main` (tick *sync secrets* after rotating a token or the key),
+or `HF_TOKEN=... HF_SPACE_TOKEN=... PS_API_KEY=... make deploy-space`. The free
+tier has no persistent disk: a restart downloads the weights again and forgets
+videos ingested since. Design: decision 0015.
 
 ### Troubleshooting
 
