@@ -201,6 +201,11 @@ docker-run-local: ## run $(IMAGE) on :$(PORT) with ./models and $(API_INDEX) mou
 	docker run --rm -p $(PORT):8000 -v "$(CURDIR)/models:/data/models:ro" \
 		-v "$(CURDIR)/$(API_INDEX):/data/index" -v "$(CURDIR)/data/videos:/data/videos" $(IMAGE)
 
+# ---------------------------------------------------------------- Step 4: deploy
+.PHONY: deploy-space
+deploy-space: ## upload to the Hugging Face Space, wait for the build, check /health (CI does this on every push to main)
+	$(PY) scripts/deploy_space.py $(if $(SYNC_SECRETS),--sync-secrets)
+
 .PHONY: clean
 clean: ## remove caches and outputs
 	rm -rf .pytest_cache .ruff_cache .mypy_cache .coverage htmlcov outputs dist build

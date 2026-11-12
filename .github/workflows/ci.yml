@@ -4,10 +4,17 @@ on:
   pull_request:
   push:
     branches: [main]
+  workflow_dispatch:          # redeploy main by hand (Actions -> CI -> Run workflow)
+    inputs:
+      sync_secrets:
+        description: "Rewrite the Space's secrets (after rotating a token or the API key)"
+        type: boolean
+        default: false
 
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  # a new commit cancels a PR's stale run, never a run on main that may be deploying
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
@@ -90,3 +97,38 @@ jobs:
 
       - name: Image size
         run: docker image ls person-search:ci
+
+  deploy:
+    name: deploy to the Hugging Face Space
+    # every push to main (= every merged PR), once the tests and the image build pass
+    needs: [checks, docker]
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    concurrency:
+      group: deploy-space
+      cancel-in-progress: false
+    environment:
+      name: huggingface-space
+      url: ${{ steps.deploy.outputs.url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          version: "0.11.32"
+
+      - name: Upload to the Space, wait for its build, check /health, search, upload key
+        # decision 0015; scripts/deploy_space.py says what each setting is for.
+        # huggingface_hub pinned to the version in uv.lock, without installing torch.
+        id: deploy
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          HF_SPACE_TOKEN: ${{ secrets.HF_SPACE_TOKEN }}
+          PS_API_KEY: ${{ secrets.PS_API_KEY }}
+          HF_SPACE: ${{ vars.HF_SPACE }}
+          PS_ASSETS__REPO: ${{ vars.PS_ASSETS_REPO }}
+        run: >
+          uv run --no-project --python 3.10 --with huggingface_hub==2.4.0
+          python scripts/deploy_space.py
+          ${{ inputs.sync_secrets && '--sync-secrets' || '' }}
