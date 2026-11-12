@@ -1,0 +1,112 @@
+name: Model gate
+
+# Every pull request. When it changes which model version production runs
+# (`production:` in configs/models.yaml), both versions are scored on the private
+# gate set and the check fails if the candidate is worse (decision 0016; the rule
+# itself is decision 0010). Otherwise the check passes in seconds, so it can be a
+# required status check on main.
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+  pull-requests: write        # the verdict is posted as a PR comment
+
+concurrency:
+  group: model-gate-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  gate:
+    name: model gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      PS_TORCH_THREADS: "4"             # both versions scored with the same thread count
+      HF_HUB_DISABLE_PROGRESS_BARS: "1"
+      # read-only Hugging Face token: the private gate set and assets repo
+      HF_TOKEN: ${{ secrets.HF_READ_TOKEN || secrets.HF_SPACE_TOKEN }}
+      GATE_SET_REPO: ${{ vars.GATE_SET_REPO || 'Roshan0091/person-search-gate' }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0              # the base branch's configs/models.yaml
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          version: "0.11.32"
+          enable-cache: true
+
+      - name: Which production models does this PR change?
+        id: plan
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          git show "$BASE_SHA:configs/models.yaml" > "$RUNNER_TEMP/base_models.yaml"
+          uv run --no-project --python 3.10 --with pyyaml==6.0.3 python -m scripts.model_gate plan \
+            --base "$RUNNER_TEMP/base_models.yaml" --head configs/models.yaml \
+            --out "$RUNNER_TEMP/plan.json"
+
+      - name: Install Python 3.10 + locked runtime deps (CPU torch)
+        if: steps.plan.outputs.needed == 'true'
+        run: |
+          uv python install 3.10
+          uv sync --frozen --no-dev
+
+      - name: Fetch the weights of both versions (SHA-256 checked)
+        if: steps.plan.outputs.needed == 'true'
+        run: uv run --no-sync python -m scripts.model_gate fetch --plan "$RUNNER_TEMP/plan.json" --models-dir models
+
+      - name: Download the private gate set (SHA-256 checked)
+        if: steps.plan.outputs.needed == 'true'
+        run: uv run --no-sync python scripts/gate_set.py download --repo "$GATE_SET_REPO" --dir "$RUNNER_TEMP/gate_set"
+
+      - name: Score production (the base branch's pin)
+        if: steps.plan.outputs.needed == 'true'
+        env:
+          VERSIONS: ${{ steps.plan.outputs.baseline }}
+        run: |
+          # shellcheck disable=SC2086  # one argument per version name (validated by plan)
+          uv run --no-sync python scripts/eval_models.py evaluate \
+            --gate-dir "$RUNNER_TEMP/gate_set" --models-dir models \
+            --config "$RUNNER_TEMP/base_models.yaml" --versions $VERSIONS \
+            --out "$RUNNER_TEMP/baseline.json"
+
+      - name: Score the candidate (this PR's pin)
+        if: steps.plan.outputs.needed == 'true'
+        env:
+          VERSIONS: ${{ steps.plan.outputs.candidate }}
+        run: |
+          # shellcheck disable=SC2086
+          uv run --no-sync python scripts/eval_models.py evaluate \
+            --gate-dir "$RUNNER_TEMP/gate_set" --models-dir models \
+            --config configs/models.yaml --versions $VERSIONS \
+            --out "$RUNNER_TEMP/candidate.json"
+
+      - name: Verdict (decision 0010 rules)
+        id: verdict
+        if: steps.plan.outputs.needed == 'true'
+        run: |
+          uv run --no-sync python -m scripts.model_gate verdict --plan "$RUNNER_TEMP/plan.json" \
+            --baseline "$RUNNER_TEMP/baseline.json" --candidate "$RUNNER_TEMP/candidate.json" \
+            --report "$RUNNER_TEMP/gate.md"
+
+      - name: Post the verdict on the pull request
+        if: ${{ !cancelled() && (steps.verdict.outcome == 'success' || steps.verdict.outcome == 'failure') }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+        run: gh pr comment "$PR" --body-file "$RUNNER_TEMP/gate.md" --edit-last --create-if-none
+
+      - name: Keep the scores
+        if: ${{ !cancelled() && steps.plan.outputs.needed == 'true' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: model-gate-scores
+          path: |
+            ${{ runner.temp }}/plan.json
+            ${{ runner.temp }}/baseline.json
+            ${{ runner.temp }}/candidate.json
+            ${{ runner.temp }}/gate.md
+          if-no-files-found: ignore
