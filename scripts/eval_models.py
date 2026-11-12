@@ -43,7 +43,12 @@ import yaml
 from person_search.config import load_settings
 from person_search.eval.campus import load_market_split
 from person_search.eval.frame_metrics import FrameLabels
-from person_search.eval.gate import campus_metrics, photo_metrics, text_metrics
+from person_search.eval.gate import (
+    campus_metrics,
+    compare_versions,
+    photo_metrics,
+    text_metrics,
+)
 from person_search.eval.gate_set import CachedCase, load_case
 from person_search.eval.text_e2e import load_targets, load_text_queries
 from person_search.factory import configure_torch
@@ -121,7 +126,13 @@ def evaluate(args: argparse.Namespace) -> int:
             details["photo"] = {k: pm.pop(k) for k in ("per_case", "selected_samples")}
             metrics |= pm
         else:
-            enc = IRRAEncoder(path, version=version)
+            onnx = spec.get("image_onnx")
+            enc = IRRAEncoder(
+                path,
+                version=version,
+                image_onnx=args.models_dir / onnx if onnx else None,
+                onnx_threads=settings.torch_threads,
+            )
             reuse = reuse_ingest(args, version, "irra", enc, cases, details)
             metrics |= campus_metrics(enc, split, ("cosine",))
             tm = text_metrics(enc, cases, queries, targets, labels, reuse)
@@ -202,6 +213,28 @@ def register(args: argparse.Namespace) -> int:
     return 0
 
 
+def compare(args: argparse.Namespace) -> int:
+    """Gate verdict for a candidate version against the production version of its family."""
+    versions: dict[str, Any] = {}
+    production: dict[str, str] = {}
+    for path in args.results:
+        data = json.loads(path.read_text())
+        versions.update(data["versions"])
+        production.update(data.get("production", {}))
+    cand = versions[args.candidate]
+    prod_name = production[cand["family"]]
+    failures = compare_versions(versions[prod_name], cand)
+    pm, cm = versions[prod_name]["metrics"], cand["metrics"]
+    for key in sorted(set(pm) & set(cm)):
+        if isinstance(pm[key], float):
+            print(f"  {key:<28} {prod_name}: {pm[key]:.4f}   {args.candidate}: {cm[key]:.4f}")
+    if failures:
+        print(f"BLOCKED: {args.candidate} vs {prod_name}: " + "; ".join(failures))
+        return 1
+    print(f"PASSED: {args.candidate} vs {prod_name}")
+    return 0
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
@@ -222,6 +255,10 @@ def main() -> int:
     )
     e.add_argument("--cases", nargs="+", default=list(CASES))
     e.set_defaults(func=evaluate)
+    c = sub.add_parser("compare", help="gate verdict: candidate vs production (exit 1 = blocked)")
+    c.add_argument("--results", type=Path, nargs="+", required=True)
+    c.add_argument("--candidate", required=True)
+    c.set_defaults(func=compare)
     r = sub.add_parser("register")
     r.add_argument("--results", type=Path, required=True)
     r.add_argument(

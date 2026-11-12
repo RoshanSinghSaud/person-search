@@ -38,6 +38,7 @@ def build_detector(settings: Settings) -> YoloDetector:
         person_class_id=d.person_class_id,
         resize_width=d.resize_width,
         device=settings.device,
+        torch_threads=settings.torch_threads,
     )
 
 
@@ -64,6 +65,8 @@ def build_irra(settings: Settings) -> IRRAEncoder:
         batch_size=s.batch_size,
         precision=s.precision,
         version=s.version,
+        image_onnx=s.image_onnx,
+        onnx_threads=settings.torch_threads,
     )
 
 

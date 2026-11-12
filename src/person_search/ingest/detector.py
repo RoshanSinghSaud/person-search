@@ -4,6 +4,11 @@ Extracted from the detection block of the legacy ``run_reid`` loop (identical in
 both repos): downscale frames wider than ``resize_width``, run YOLO on class 0,
 scale boxes back to the original frame, keep ``conf >= confidence``.
 
+Ultralytics sets ``torch.set_num_threads(cpu_count - 1)`` when it prepares its
+first prediction (AUDIT.md F25). When ``torch_threads`` is given, the detector
+puts the configured count back after every call; when it is None (the default,
+and what the golden data were recorded with) Ultralytics' value stays.
+
 License: Ultralytics YOLO is AGPL-3.0 (see THIRD_PARTY_NOTICES.md).
 """
 
@@ -15,6 +20,7 @@ from typing import Any
 
 import cv2
 import numpy as np
+import torch
 
 from person_search.errors import ModelLoadError
 from person_search.types import Detection
@@ -31,6 +37,7 @@ class YoloDetector:
         person_class_id: int = 0,
         resize_width: int = 640,
         device: str = "cpu",
+        torch_threads: int | None = None,
     ) -> None:
         weights = Path(weights)
         if not weights.is_file():
@@ -48,6 +55,7 @@ class YoloDetector:
         self.classes = [person_class_id]
         self.resize_width = resize_width
         self.device = device
+        self.torch_threads = torch_threads
         log.info("YOLO loaded from %s (conf=%.2f)", weights, confidence)
 
     def detect(self, frame: np.ndarray) -> list[Detection]:
@@ -59,6 +67,8 @@ class YoloDetector:
             small = cv2.resize(frame, (0, 0), fx=scale, fy=scale)
 
         results: Any = self.model(small, verbose=False, classes=self.classes, device=self.device)
+        if self.torch_threads and torch.get_num_threads() != self.torch_threads:
+            torch.set_num_threads(self.torch_threads)  # undo Ultralytics' reset (F25)
         detections: list[Detection] = []
         for result in results:
             boxes = result.boxes

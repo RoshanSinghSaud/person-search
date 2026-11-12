@@ -21,6 +21,9 @@ What changed:
   training heads raise :class:`CheckpointMismatchError` instead of falling back
   to base CLIP (AUDIT.md F7).
 * The CLIP-ReID image model from repo 1 is not ported: photo queries use OSNet.
+* ``image_onnx`` swaps the image tower for an ONNX Runtime session (an FP32
+  export or its INT8 quantization, ``models/onnx_image.py``); text stays in
+  PyTorch.
 """
 
 from __future__ import annotations
@@ -37,6 +40,7 @@ from torch import nn
 
 from person_search.errors import ModelLoadError
 from person_search.models.checkpoint import StateDict, drop_prefixes, load_strict, read_state_dict
+from person_search.models.onnx_image import OnnxImageSession
 from person_search.models.preprocessing import (
     CLIP_MEAN,
     CLIP_STD,
@@ -153,6 +157,8 @@ class IRRAEncoder:
         batch_size: int = 16,
         precision: str = "fp32",
         version: str = "irra-v1",
+        image_onnx: str | Path | None = None,
+        onnx_threads: int | None = None,
     ) -> None:
         self.weights = Path(weights)
         self.device = torch.device(device)
@@ -191,10 +197,22 @@ class IRRAEncoder:
             else "no prompt tokens (plain CLIP text path)",
         )
         self.transform = build_transform(self.image_size, CLIP_MEAN, CLIP_STD)
+        self.onnx: OnnxImageSession | None = None
+        if image_onnx is not None:
+            self.onnx = OnnxImageSession(
+                image_onnx, threads=onnx_threads, batch_size=self.batch_size
+            )
+            if self.onnx.image_size != self.image_size or self.onnx.dim != self.dim:
+                raise ModelLoadError(
+                    f"{image_onnx} expects {self.onnx.image_size}/{self.onnx.dim}-d, "
+                    f"the checkpoint {self.image_size}/{self.dim}-d"
+                )
 
     # ------------------------------------------------------------------ image
     @torch.inference_mode()
     def encode_images(self, images: Sequence[np.ndarray], *, normalize: bool = True) -> np.ndarray:
+        if self.onnx is not None:
+            return self.onnx.encode_images(images, normalize=normalize)
         if len(images) == 0:
             return np.zeros((0, self.dim), dtype=np.float32)
         out = []

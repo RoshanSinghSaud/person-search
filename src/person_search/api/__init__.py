@@ -1,8 +1,12 @@
-"""HTTP service (Days 17-18).
+"""HTTP service (Step 2 of the fast plan; decision 0012).
 
-Planned contents: ``app.py`` (FastAPI with lifespan model loading via
-``person_search.factory.build_components``), ``routes/search.py``
-(``POST /search``: photo, description or both), ``routes/ingest.py``
-(``POST /ingest`` -> 202 + job id, ``GET /jobs/{id}``), ``worker.py`` (RQ worker
-calling ``IngestPipeline``), ``/health`` and ``/metrics``.
+* :mod:`~person_search.api.app`     - ``create_app()``: lifespan model loading, error mapping
+* :mod:`~person_search.api.routes`  - ``POST /search``, ``POST /ingest``, ``GET /jobs/{id}``,
+  ``GET /health``, ``GET /videos``
+* :mod:`~person_search.api.service` - ``SearchService``: encoders + index + ``IndexedSearch``
+* :mod:`~person_search.api.jobs`    - one-thread ingest queue, jobs kept in memory
+* :mod:`~person_search.api.schemas` - response bodies (the contract the tests pin)
+
+Imports stay light here: ``create_app`` pulls in FastAPI, and the real models
+load only when the app starts.
 """

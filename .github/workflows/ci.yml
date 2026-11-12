@@ -25,10 +25,10 @@ jobs:
           version: "0.11.32"        # same uv that wrote uv.lock
           enable-cache: true
 
-      - name: Install Python 3.10 + locked deps (CPU torch)
+      - name: Install Python 3.10 + locked deps (CPU torch, API)
         run: |
           uv python install 3.10
-          uv sync --group dev --frozen
+          uv sync --group dev --group serve --frozen
 
       - name: Lint
         run: |
@@ -37,6 +37,11 @@ jobs:
 
       - name: Type check
         run: uv run mypy
+
+      - name: API contract tests
+        # FastAPI app + real IndexedSearch over both index backends, fake models
+        # (tests/unit/test_api.py). Runs first so a broken contract is named as such.
+        run: uv run pytest tests/unit/test_api.py -v
 
       - name: Unit tests
         # parity/golden tests need the legacy repos + weights; they run locally
