@@ -6,7 +6,7 @@ final-year system into a production service: index once, search many.
 
 [![CI](https://github.com/RoshanSinghSaud/person-search/actions/workflows/ci.yml/badge.svg)](https://github.com/RoshanSinghSaud/person-search/actions/workflows/ci.yml)
 
-> **Status: Weeks 1-2 done; Week 3 steps 1-3 (IRRA INT8, web API, Docker) done; step 4 (deploy on every merge to a Hugging Face Space) built and parked: since July 2026 Hugging Face runs Docker Spaces for PRO accounts only (decision 0015).** Week 1 extracted both legacy repos into modules
+> **Status: Weeks 1-2 done; Week 3 steps 1-3 (IRRA INT8, web API, Docker) done; step 4 (deploy on every merge to a Hugging Face Space) built and parked: since July 2026 Hugging Face runs Docker Spaces for PRO accounts only (decision 0015); step 5 (model gate in CI) built, first CI runs pending.** Week 1 extracted both legacy repos into modules
 > with parity and golden tests ([AUDIT.md](AUDIT.md)). Week 2 added evaluation
 > for photo and text queries, a Qdrant index holding both vectors, indexed
 > photo, text and hybrid search (exactly equal to a full scan), the first
@@ -201,6 +201,29 @@ or `HF_TOKEN=... HF_SPACE_TOKEN=... PS_API_KEY=... make deploy-space`. The free
 tier has no persistent disk: a restart downloads the weights again and forgets
 videos ingested since. Design: decision 0015.
 
+### Model gate: a worse model cannot reach production
+
+Every pull request runs the **model gate** (`.github/workflows/model-gate.yml`,
+decision 0016). If it changes a `production:` pin in `configs/models.yaml`, CI
+downloads both versions' weights and the private gate set, scores both on the
+same runner, and fails when the candidate breaks decision 0010's rule: campus
+mAP down by more than 1 point, OSNet photo F1 down by more than 1 point, or any
+text query that production ranks first lost. The verdict is posted on the pull
+request as a table. Other pull requests pass it in seconds. Versions are
+immutable: new weights get a new version name.
+
+One-time setup: upload the gate set and the gate-only weights to Hugging Face
+(private), and give CI a **read** token (`HF_READ_TOKEN`; the deploy's
+`HF_SPACE_TOKEN` also works):
+
+```bash
+uv run hf upload <hf-user>/person-search-gate ../legacy/gate_set . --repo-type dataset --private
+uv run hf upload <hf-user>/person-search-assets models/osnet_market_v0.pth weights/osnet_market_v0.pth
+```
+
+To make "fails" mean "cannot merge": *Settings -> Rules -> Rulesets*, target
+`main`, require the status check `model gate`. Results: docs/results/week4_gate.md.
+
 ### Troubleshooting
 
 - **`ModuleNotFoundError: No module named 'person_search'` on macOS.** The
@@ -375,6 +398,16 @@ Full tables: [docs/results/week3_docker.md](docs/results/week3_docker.md); decis
 | Warm restart (volume kept) | 9 s, no download; ingested videos kept |
 | Answers inside the container | photo 4/4, text 12/12, identical to Week 2 |
 | Memory | 2.3 GB idle |
+
+### Week 4, step 5: model gate in CI
+
+Decision 0016. Verdicts of the gate rule on the Week 2-3 scores (same code as CI):
+
+| Pull request pins | Against | Verdict | Deciding numbers |
+|---|---|---|---|
+| `irra-v0` (vanilla CLIP) | `irra-v1` | **blocked** | campus mAP 78.01% -> 12.82%; 4 Hit@1 queries lost |
+| `osnet-v0` (Market-1501) | `osnet-v1` | **blocked** | campus mAP 76.41% -> 29.46% |
+| `irra-v2` (INT8 tower) | `irra-v1` | **passed** | campus mAP -0.56 pts; no Hit@1 lost |
 
 ## Credits
 

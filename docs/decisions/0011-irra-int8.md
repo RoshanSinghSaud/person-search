@@ -1,6 +1,6 @@
 # 0011 - IRRA's image tower runs as ONNX INT8 (irra-v2), text stays in PyTorch
 
-- **Status:** accepted (candidate passes the gate; promoted in step 5)
+- **Status:** accepted (candidate passes the gate, also in CI: decision 0016; promotion waits for an index built with irra-v2)
 - **Date:** 2026-11-09
 
 ## Context
