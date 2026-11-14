@@ -19,6 +19,9 @@ from scripts.model_gate import (
 
 ROOT = Path(__file__).resolve().parents[2]
 MODELS = yaml.safe_load((ROOT / "configs" / "models.yaml").read_text())
+# The tests fix their own production pins: a PR that changes the real ones (the very
+# thing the gate scores) must not break them.
+MODELS["production"] = {"osnet": "osnet-v1", "irra": "irra-v1"}
 MANIFEST = yaml.safe_load((ROOT / "configs" / "assets.yaml").read_text())
 
 
