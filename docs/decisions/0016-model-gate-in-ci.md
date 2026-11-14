@@ -53,12 +53,13 @@ Checked before the first CI run, on the scores of Weeks 2-3 (same code):
 | osnet-v0 (Market-1501) | osnet-v1 | blocked | campus mAP 76.41% -> 29.46% (photo F1 alone would have let it through: 84.70% -> 85.25%) |
 | irra-v2 (INT8 tower) | irra-v1 | passed | campus mAP -0.56 pts; Hit@1 8/12, no query lost |
 
-The CI runs on the demo pull requests are in the results file.
+In CI, on real pull requests (#7, #9, #10), the verdicts and numbers were the same;
+jobs took 5.7-29.6 minutes (docs/results/week4_gate.md).
 
 ## Consequences
 
-- A model change costs one CI run (estimated 15-35 minutes; measured times in the
-  results file); other pull requests pay a few seconds.
+- A model change costs one CI run (5.7 min for OSNet, 16.5-29.6 min for IRRA);
+  other pull requests pay about 10 seconds.
 - "Blocks" is literal only when the check is required: *Settings -> Rules ->
   Rulesets -> main -> Require status checks: `model gate`*.
 - Passing the gate does not promote a model by itself: `irra-v2` passes, but the

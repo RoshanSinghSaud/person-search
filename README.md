@@ -6,7 +6,7 @@ final-year system into a production service: index once, search many.
 
 [![CI](https://github.com/RoshanSinghSaud/person-search/actions/workflows/ci.yml/badge.svg)](https://github.com/RoshanSinghSaud/person-search/actions/workflows/ci.yml)
 
-> **Status: Weeks 1-2 done; Week 3 steps 1-3 (IRRA INT8, web API, Docker) done; step 4 (deploy on every merge to a Hugging Face Space) built and parked: since July 2026 Hugging Face runs Docker Spaces for PRO accounts only (decision 0015); step 5 (model gate in CI) built, first CI runs pending.** Week 1 extracted both legacy repos into modules
+> **Status: Weeks 1-2 done; Week 3 steps 1-3 (IRRA INT8, web API, Docker) done; step 4 (deploy on every merge to a Hugging Face Space) built and parked: since July 2026 Hugging Face runs Docker Spaces for PRO accounts only (decision 0015); step 5 (model gate in CI) done: it blocks vanilla CLIP and the Market-1501 OSNet and passes INT8 IRRA on real pull requests (#7, #9, #10).** Week 1 extracted both legacy repos into modules
 > with parity and golden tests ([AUDIT.md](AUDIT.md)). Week 2 added evaluation
 > for photo and text queries, a Qdrant index holding both vectors, indexed
 > photo, text and hybrid search (exactly equal to a full scan), the first
@@ -401,13 +401,14 @@ Full tables: [docs/results/week3_docker.md](docs/results/week3_docker.md); decis
 
 ### Week 4, step 5: model gate in CI
 
-Decision 0016. Verdicts of the gate rule on the Week 2-3 scores (same code as CI):
+Full table: [docs/results/week4_gate.md](docs/results/week4_gate.md); decision 0016.
+Real pull requests, scored in CI on GitHub's 4-vCPU runner:
 
-| Pull request pins | Against | Verdict | Deciding numbers |
-|---|---|---|---|
-| `irra-v0` (vanilla CLIP) | `irra-v1` | **blocked** | campus mAP 78.01% -> 12.82%; 4 Hit@1 queries lost |
-| `osnet-v0` (Market-1501) | `osnet-v1` | **blocked** | campus mAP 76.41% -> 29.46% |
-| `irra-v2` (INT8 tower) | `irra-v1` | **passed** | campus mAP -0.56 pts; no Hit@1 lost |
+| Pull request | Pins production to | Verdict | Deciding numbers | Job |
+|---|---|---|---|---:|
+| [#7](https://github.com/RoshanSinghSaud/person-search/pull/7) | `irra-v0` (vanilla CLIP) | **blocked** | campus mAP 78.01% -> 12.82%; 4 Hit@1 queries lost | 29.6 min |
+| [#9](https://github.com/RoshanSinghSaud/person-search/pull/9) | `osnet-v0` (Market-1501) | **blocked** | campus mAP 76.41% -> 29.46% | 5.7 min |
+| [#10](https://github.com/RoshanSinghSaud/person-search/pull/10) | `irra-v2` (INT8 tower) | **passed** | campus mAP -0.56 pts; no Hit@1 lost | 16.5 min |
 
 ## Credits
 
