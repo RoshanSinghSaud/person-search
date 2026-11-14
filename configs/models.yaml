@@ -6,6 +6,10 @@
 #
 # sha256 values are of the files `make weights` downloads (scripts/fetch_weights.py).
 # Metrics are filled in by `make eval-models` (Day 8); see docs/results/week2.md.
+#
+# A pull request that changes a `production` pin is scored on the gate set in CI and
+# fails if the candidate is worse (.github/workflows/model-gate.yml, decision 0016).
+# Versions are immutable: new weights get a new version name.
 
 production:
   osnet: osnet-v1

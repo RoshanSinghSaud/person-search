@@ -141,7 +141,10 @@ def download(args: argparse.Namespace) -> int:
     from huggingface_hub import snapshot_download
 
     path = snapshot_download(
-        args.repo, repo_type="dataset", local_dir=str(args.dir), token=os.environ.get("HF_TOKEN")
+        args.repo,
+        repo_type="dataset",
+        local_dir=str(args.dir),
+        token=os.environ.get("HF_TOKEN", "").strip() or None,  # a pasted secret may end in \n
     )
     manifest = json.loads((Path(path) / "manifest.json").read_text())
     bad = [f for f, m in manifest["files"].items() if sha256(Path(path) / f) != m["sha256"]]

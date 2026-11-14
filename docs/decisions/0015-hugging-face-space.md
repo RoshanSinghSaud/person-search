@@ -1,6 +1,6 @@
 # 0015 - The service runs on a public Hugging Face Space; every push to main redeploys it
 
-- **Status:** accepted
+- **Status:** accepted, then parked the same day (see "Parked")
 - **Date:** 2026-11-12
 
 ## Context
@@ -51,6 +51,21 @@ port 8000. Constraints:
 - **No footage on the public server by default.** Only the index (vectors and
   boxes) is downloaded; the 4 test videos are not, so search results there come
   without clips until the footage's owners agree to a public demo.
+
+## Parked (2026-11-12)
+
+The first deploy reached Hugging Face and was refused with **402 Payment Required**:
+since July 2026 Static Spaces are free, but Gradio and Docker Spaces on the free
+cpu-basic hardware need a PRO subscription (USD 9/month), which needs a payment
+card. The pipeline is kept and switched off: the `deploy` job runs only when the
+repository variable `DEPLOY_SPACE` is `true` (Settings -> Secrets and variables ->
+Actions -> Variables), so `main` stays green. What did run for real: CI on the
+merge, the private assets repo (`make publish-assets`, pinned in
+`configs/assets.yaml`), the token check and the Space creation request.
+
+To go live later: subscribe the Hugging Face account to PRO and set
+`DEPLOY_SPACE=true`; or point the same image at another host (Azure Container Apps
+on Azure for Students needs no card) and replace only the upload step.
 
 ## Results (docs/results/week4_deploy.md)
 
